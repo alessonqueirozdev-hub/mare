@@ -16,7 +16,9 @@ mare-protocol = { path = "crates/mare-protocol", version = "0.1.0" }
 mare-sys = { path = "crates/mare-sys", version = "0.1.0" }
 mare-client = { path = "crates/mare-client", version = "0.1.0" }
 mare-hub = { path = "crates/mare-hub", version = "0.1.0" }
+mare-wasapi = { path = "crates/mare-wasapi", version = "0.1.0" }
 windows-sys = "0.61"
+windows = "0.62"
 libc = "0.2"
 
 [workspace.lints.rust]

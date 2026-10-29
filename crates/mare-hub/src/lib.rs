@@ -40,13 +40,13 @@ use std::time::Duration;
 
 use mare_protocol::LayoutError;
 use mare_protocol::registry::{RegistryHeader, RegistryLayout, RegistryView, hub_state};
-use mare_protocol::segment::MAX_FRAMES;
 use mare_sys::{Doorbell, HubName, ProcessWatch, SharedMemory, current_pid};
 
 pub use clock::{Clock, FakeClock, SystemClock};
 pub use device::{AudioBlock, Device, DeviceConfig, DeviceError};
 pub use engine::{ClientId, CycleReport, Engine};
 pub use keeper::Housekeeper;
+pub use mare_protocol::segment::MAX_FRAMES;
 pub use shared::Stats;
 
 use shared::{Counters, HubSlot, Shared};

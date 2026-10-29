@@ -51,6 +51,12 @@ word. Outputs played silence throughout; nothing recorded was kept.
    discontinuities; the 2 s duplex test of step 1, measured after half a
    second, had none, so the losses appear to belong to the input's start,
    which is not yet measured on its own (TECH_DEBT item 22).
+   That run printed its levels where only the assistant saw them, after it
+   ended; it was run again for 15 s in a terminal the person watched. They
+   saw the levels follow their voice, from about −120 dBFS (exact zeros for
+   the first 3 s again) to −11 to −30 dBFS, all 1 501 cycles in time; over
+   the run, start included, 57 887 frames padded, 1 707 dropped and 3
+   discontinuities, the same pattern as before.
 
 ### 2026-10-29: by hand, Realtek output of the development laptop
 

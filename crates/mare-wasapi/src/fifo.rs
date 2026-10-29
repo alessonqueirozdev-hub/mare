@@ -46,6 +46,17 @@ pub struct CaptureStats {
     /// Packets the system flagged as not following on from the one before
     /// (it lost some).
     pub discontinuities: u64,
+    /// Packets whose position on the device's clock was not where the one
+    /// before ended.
+    pub position_jumps: u64,
+    /// Frames of packets that started before the previous one ended: the
+    /// same stretch of recording delivered again.
+    pub repeated_frames: u64,
+    /// Frames between the end of a packet and the start of the next: a
+    /// stretch of recording never delivered.
+    pub skipped_frames: u64,
+    /// The largest packet, in frames.
+    pub largest_packet: u64,
 }
 
 /// A bounded queue of recorded frames.
@@ -58,6 +69,7 @@ pub struct CaptureFifo {
     max_backlog: usize,
     read: usize,
     len: usize,
+    next_position: Option<u64>,
     stats: CaptureStats,
 }
 
@@ -81,6 +93,7 @@ impl CaptureFifo {
             max_backlog,
             read: 0,
             len: 0,
+            next_position: None,
             stats: CaptureStats::default(),
         }
     }
@@ -149,6 +162,24 @@ impl CaptureFifo {
             self.data[at..at + self.channels].fill(0.0);
             self.len += 1;
         }
+    }
+
+    /// Checks a packet's position on the device's clock (its first frame's,
+    /// in frames) against where the previous packet ended, counting jumps.
+    /// Call it for every packet, in order, before pushing it.
+    pub fn note_position(&mut self, position: u64, frames: usize) {
+        if let Some(expected) = self.next_position {
+            if position != expected {
+                self.stats.position_jumps += 1;
+                if position < expected {
+                    self.stats.repeated_frames += expected - position;
+                } else {
+                    self.stats.skipped_frames += position - expected;
+                }
+            }
+        }
+        self.next_position = Some(position + frames as u64);
+        self.stats.largest_packet = self.stats.largest_packet.max(frames as u64);
     }
 
     /// Counts a packet that does not follow on from the one before.

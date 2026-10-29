@@ -701,6 +701,11 @@ impl WasapiDevice {
         self.input.as_ref().map(|input| input.fifo.stats())
     }
 
+    /// Frames the input's buffer holds, if there is an input.
+    pub fn input_buffer_frames(&self) -> Option<u32> {
+        self.input.as_ref().map(|input| input.buffer_frames)
+    }
+
     /// Frames of input queued now, cushion included: how far the input lags
     /// what the hub hands on, beyond the devices' own latency.
     pub fn input_backlog(&self) -> Option<usize> {
@@ -777,13 +782,21 @@ impl Device for WasapiDevice {
             let mut data = std::ptr::null_mut();
             let mut frames = 0u32;
             let mut flags = 0u32;
+            let mut position = 0u64;
             // SAFETY: on success `data` points to `frames` frames of the
             // input format, ours until `ReleaseBuffer`.
             unsafe {
                 input
                     .capture
-                    .GetBuffer(&mut data, &mut frames, &mut flags, None, None)
+                    .GetBuffer(
+                        &mut data,
+                        &mut frames,
+                        &mut flags,
+                        Some(&mut position),
+                        None,
+                    )
                     .map_err(device_error)?;
+                input.fifo.note_position(position, frames as usize);
                 if flags & AUDCLNT_BUFFERFLAGS_DATA_DISCONTINUITY.0 as u32 != 0 {
                     input.fifo.note_discontinuity();
                 }

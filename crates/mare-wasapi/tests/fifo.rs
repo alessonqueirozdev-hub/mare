@@ -149,6 +149,20 @@ fn a_cushion_absorbs_packets_that_come_a_moment_late() {
 }
 
 #[test]
+fn packet_positions_that_repeat_or_skip_are_counted() {
+    let mut fifo = CaptureFifo::new(2, 4, 8);
+    fifo.note_position(1000, 4);
+    fifo.note_position(1004, 4); // follows on
+    fifo.note_position(1004, 4); // the same four frames again
+    fifo.note_position(1010, 6); // two frames never delivered
+    let stats = fifo.stats();
+    assert_eq!(stats.position_jumps, 2);
+    assert_eq!(stats.repeated_frames, 4);
+    assert_eq!(stats.skipped_frames, 2);
+    assert_eq!(stats.largest_packet, 6);
+}
+
+#[test]
 fn silent_packets_and_extra_channels_are_silence() {
     let mut fifo = CaptureFifo::new(1, 3, 6);
     fifo.push_silence(3);

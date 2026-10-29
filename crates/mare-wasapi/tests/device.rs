@@ -344,11 +344,20 @@ fn duplex(output: &Endpoint, input: &Endpoint, mode: Mode) {
     });
     let after = engine.device().input_stats().unwrap();
     let backlog = engine.device().input_backlog().unwrap();
+    let input_buffer = engine.device().input_buffer_frames().unwrap();
     let stats = engine.stats();
     engine.shut_down();
     drop(engine);
     let (_, finite) = client.join().unwrap();
 
+    eprintln!(
+        "input buffer {} frames, largest packet {}; positions jumped {} times, {} frames repeated, {} skipped",
+        input_buffer,
+        after.largest_packet,
+        after.position_jumps - before.position_jumps,
+        after.repeated_frames - before.repeated_frames,
+        after.skipped_frames - before.skipped_frames,
+    );
     let frames = u64::from(cycles) * u64::from(config.period_frames);
     let padded = after.padded - before.padded;
     let dropped = after.dropped - before.dropped;

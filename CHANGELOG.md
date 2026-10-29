@@ -54,6 +54,11 @@ break the protocol and the API.
 
 ### Protocol (`mare-protocol`)
 
+- `include/mare.h`: the layout in C (C11 or C++11), with the structures,
+  the constants, a layout computation and static checks of every size and
+  offset. A test compiles and runs a C program with it and compares its
+  layout with the Rust one over 360 configurations, and compiles it as C++.
+
 - The shared-memory layout, version 0.1, described byte by byte in
   [docs/LAYOUT.md](docs/LAYOUT.md): the hub's registry (header, control
   block, one 64-byte slot per client), the client segment (header, control

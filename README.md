@@ -43,6 +43,7 @@ from Recife: every program built on Manguebyte will speak MARÉ.
 | `mare-sys` | Named shared memory, doorbells, process watches, per system |
 | `mare-client` | Connect to a hub and run a cycle each period |
 | `mare-hub` | The hub: the cycle engine, the housekeeper, a fake device |
+| `include/mare.h` | The layout in C, checked against the Rust one |
 | `mare-wasapi` | A WASAPI device, output and duplex input, exclusive or shared (Windows) |
 
 ```bash

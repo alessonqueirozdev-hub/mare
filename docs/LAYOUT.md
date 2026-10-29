@@ -1,9 +1,14 @@
 # MARÉ: the shared-memory layout
 
 This is the byte-level layout of layout version 0.1, as `mare-protocol`
-implements it. `crates/mare-protocol/tests/layout.rs` checks the Rust
-structures against these tables, and reads and writes segments through these
-offsets alone, as a program in another language would.
+implements it in Rust and [`include/mare.h`](../include/mare.h) in C.
+`crates/mare-protocol/tests/layout.rs` checks the Rust structures against
+these tables, and reads and writes segments through these offsets alone, as
+a program in another language would. `tests/c_layout.rs` compiles a C
+program with `mare.h` (whose static checks hold every size and offset to
+these tables), runs the header's own layout computation over 360
+configurations, valid and not, and requires the same results as the Rust
+one; it also compiles the header as C++.
 
 All integers are little-endian. Every block starts on a multiple of 64 bytes,
 and a segment is mapped at an address that is a multiple of 64. Nothing is a

@@ -156,6 +156,7 @@ impl CaptureFifo {
         let stride = size * self.channels;
         assert!(bytes.len() >= frames * stride);
         self.stats.packets += 1;
+        self.stats.largest_packet = self.stats.largest_packet.max(frames as u64);
         if frames > 0 && bytes[..frames * stride].iter().all(|&b| b == 0) {
             // Zero bytes are a zero sample in every format here.
             self.stats.zero_packets += 1;
@@ -237,6 +238,7 @@ impl CaptureFifo {
     /// position.
     pub fn push_silent_packet(&mut self, frames: usize) {
         self.stats.packets += 1;
+        self.stats.largest_packet = self.stats.largest_packet.max(frames as u64);
         self.stats.silent_frames += frames as u64;
         self.push_silence(frames);
     }
@@ -246,6 +248,7 @@ impl CaptureFifo {
     pub fn push_silence_at(&mut self, position: u64, frames: usize) {
         let skip = self.align(position, frames);
         self.stats.packets += 1;
+        self.stats.largest_packet = self.stats.largest_packet.max(frames as u64);
         self.stats.silent_frames += (frames - skip) as u64;
         self.push_silence(frames - skip);
     }

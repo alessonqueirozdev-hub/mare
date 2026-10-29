@@ -24,8 +24,12 @@ break the protocol and the API.
   one period. The queue starts with a period of cushion, places packets by
   their position on the device's clock (in exclusive mode the Realtek input
   hands every packet over twice; repeats are left out, gaps become
-  silence), and keeps its backlog bounded, counting every correction.
-  `examples/meter.rs` prints an input's level as a client reads it.
+  silence; only in exclusive mode, because in shared mode positions count
+  the device's frames, 441 for every 480 of the stream on the Realtek
+  microphone), and keeps its backlog bounded, counting every correction.
+  `CaptureMonitor` publishes the counters for another thread to read live.
+  `examples/meter.rs` prints an input's level as a client reads it, with a
+  timeline of what the input delivered.
 - `format`: conversion between the hub's floats and 32-bit float, 16-bit,
   24-bit (packed or in 32) and 32-bit integer, clamped, NaN as silence, a
   round trip within half a step.

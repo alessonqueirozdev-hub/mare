@@ -19,6 +19,33 @@ reported. Add `--exclusive` for exclusive mode.
 
 ## Sessions
 
+### 2026-10-29: by hand, where the meter's losses came from
+
+The person watching a terminal; output silent; nothing recorded kept.
+
+1. The meter now prints a timeline, each quarter second: frames the input
+   delivered, how many the system flagged silent, packets of all zeros,
+   padding, dropping and the queue. Run for 15 s in shared mode, it showed
+   every 480-frame packet losing about 39 frames: 57 989 frames left out as
+   "repeated" and 1 421 of 1 488 cycles padded. 441 of 480 is 44 100 of
+   48 000: the microphone runs at 44.1 kHz behind the 48 kHz engine, and in
+   shared mode a packet's device position counts the device's frames, not
+   the stream's. Placing packets by position, which exclusive mode needs
+   (it hands packets over twice), read that as overlap. It is now used in
+   exclusive mode only. The earlier meter runs' losses were this, not the
+   input's start, as had been written below.
+2. Shared duplex test again: 200 cycles, input 95 686 frames for 96 000
+   out (the difference less than a packet), nothing padded or dropped.
+3. The meter again, 15 s, the person speaking throughout: 1 493 cycles,
+   all in time; the input delivered 716 778 frames in 1 484 packets of
+   about 483 frames, and 716 640 (1 493 × 480) were handed on: nothing
+   padded, dropped, repeated or skipped. The queue rises by 3 frames a
+   cycle and falls by a packet when a cycle gets none, between 465 and 980
+   frames (10 to 20 ms). 3 discontinuities were flagged, as in every run,
+   probably at the start, which the meter does not yet time. The first
+   seconds of exact zeros seen in two earlier runs did not appear in this
+   run or the one before.
+
 ### 2026-10-29: by hand, duplex with the Realtek microphone
 
 Output "Alto-falantes (2- Realtek(R) Audio)" with input "Microfone (2-
@@ -43,14 +70,17 @@ word. Outputs played silence throughout; nothing recorded was kept.
    95 904 frames for 95 904 out, 94 176 repeated frames left out, nothing
    padded or dropped, the client never late; 96 frames queued at the end,
    2 to 3 ms of lag.
+   *Correction, the same day:* placing packets by position was then used in
+   shared mode too, where it is wrong, and the meter runs of step 3 suffered
+   from it; see the session above.
 3. The meter (`examples/meter.rs`), shared mode, 10 s, the person speaking
    and clapping: the level read by the client rose from −120 to −78 dBFS
    (the first 3 s, mostly exact zeros) to −30 to −13 dBFS while they made
    sound. 929 cycles, every one in time. Over the whole run, start
    included, the input padded 35 520 frames, dropped 4 761 and reported 3
-   discontinuities; the 2 s duplex test of step 1, measured after half a
-   second, had none, so the losses appear to belong to the input's start,
-   which is not yet measured on its own (TECH_DEBT item 22).
+   discontinuities. These were put down here to the input's start; that was
+   wrong (see the session above): almost all of them came from placing
+   shared-mode packets by a position that counts other frames.
    That run printed its levels where only the assistant saw them, after it
    ended; it was run again for 15 s in a terminal the person watched. They
    saw the levels follow their voice, from about −120 dBFS (exact zeros for

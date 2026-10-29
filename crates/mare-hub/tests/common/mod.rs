@@ -43,8 +43,21 @@ pub fn fake_hub(
     (engine, keeper, clock)
 }
 
-/// Connects a client while this thread answers for the hub's housekeeper.
+/// Connects a client while this thread answers for the hub's housekeeper,
+/// and makes it ready for cycles, as its first wait would.
 pub fn connect(
+    keeper: &mut Housekeeper,
+    hub: &HubName,
+    config: &ClientConfig,
+) -> Result<Client, ConnectError> {
+    let mut client = connect_only(keeper, hub, config)?;
+    assert!(!client.try_cycle(|_| unreachable!()).unwrap());
+    Ok(client)
+}
+
+/// Connects a client while this thread answers for the hub's housekeeper,
+/// and leaves it not yet ready.
+pub fn connect_only(
     keeper: &mut Housekeeper,
     hub: &HubName,
     config: &ClientConfig,

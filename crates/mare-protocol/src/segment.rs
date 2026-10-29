@@ -128,6 +128,10 @@ pub mod hub_flags {
 pub mod client_flags {
     /// The client is leaving and will not finish another cycle.
     pub const LEAVING: u32 = 1 << 0;
+    /// The client is waiting for cycles. Until it sets this, the hub does
+    /// not wake it or count it late: a client is adopted while it is still
+    /// connecting, before its audio thread runs.
+    pub const READY: u32 = 1 << 1;
 }
 
 /// The five numbers a client segment's layout follows from.

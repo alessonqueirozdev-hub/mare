@@ -218,6 +218,30 @@ fn a_client_that_never_answers_never_holds_the_hub() {
 }
 
 #[test]
+fn a_client_is_not_woken_or_counted_until_it_is_ready() {
+    let hub = unique_hub();
+    let (mut engine, mut keeper, _clock) = fake_hub(&hub, 4, silence);
+    let mut client =
+        common::connect_only(&mut keeper, &hub, &ClientConfig::new("slow start", 0, 2)).unwrap();
+    // Adopted, but its audio thread has not started: three cycles pass it by.
+    for _ in 0..3 {
+        let report = engine.run_cycle().unwrap();
+        assert_eq!((report.woken, report.late, report.busy), (0, 0, 0));
+    }
+    assert_eq!(client.late_cycles(), 0);
+    // Its first wait makes it ready; the next cycle wakes it.
+    assert!(!client.try_cycle(|_| unreachable!()).unwrap());
+    engine.begin_cycle().unwrap();
+    assert!(constant(&mut client, 0.5));
+    let report = engine.end_cycle().unwrap();
+    assert_eq!((report.woken, report.on_time), (1, 1));
+    assert_eq!(report.cycle, 4);
+    assert!(engine.device().last_output(0).iter().all(|&x| x == 0.5));
+    let stats = engine.stats();
+    assert_eq!((stats.late, stats.busy), (0, 0));
+}
+
+#[test]
 fn a_client_that_leaves_is_freed_and_its_slot_reused() {
     let hub = unique_hub();
     let (mut engine, mut keeper, _clock) = fake_hub(&hub, 1, silence);

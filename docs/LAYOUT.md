@@ -138,7 +138,7 @@ Control (the first line is written by the hub, the second by the client):
 | 20 | atomic `u32` | hub flags: bit 0, stop |
 | 24 | atomic `u64` | the client's budget, in nanoseconds from being woken |
 | 64 | atomic `u64` | the last cycle the client finished |
-| 72 | atomic `u32` | client flags: bit 0, leaving |
+| 72 | atomic `u32` | client flags: bit 0, leaving; bit 1, ready |
 | 128 | atomic `u32` | the client's doorbell |
 
 Audio is 32-bit float, one buffer per channel, not interleaved, holding one
@@ -158,7 +158,10 @@ period.
    client that did not finish by its deadline is counted as late and
    contributes nothing.
 
-A client that is still working on an earlier cycle is not woken, and its
+A client is not woken until it sets its ready flag, which it does when its
+audio thread first waits for a cycle: it is adopted while it is still
+connecting, and a cycle it could not have run is not counted against it. A
+client that is still working on an earlier cycle is not woken, and its
 buffers are not touched, until it finishes. This is why one buffer per channel
 is enough: the hub writes inputs only to an idle client, and reads outputs
 only of a client that has finished the current cycle.

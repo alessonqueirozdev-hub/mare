@@ -131,6 +131,7 @@ static inline uint64_t mare_registry_size(uint32_t slot_count)
 /* control: hub_flags and client_flags */
 #define MARE_HUB_FLAG_STOP 1u
 #define MARE_CLIENT_FLAG_LEAVING 1u
+#define MARE_CLIENT_FLAG_READY 2u /* waiting for cycles; until then the hub does not wake it */
 
 typedef struct mare_segment_header {
     uint8_t magic[8];             /* MARE_SEGMENT_MAGIC and a NUL */

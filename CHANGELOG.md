@@ -89,6 +89,11 @@ break the protocol and the API.
 
 ### Hub (`mare-hub`)
 
+- A client sets a ready flag (client flags bit 1) when its audio thread
+  first waits for a cycle, and the hub wakes, and counts as late, only
+  ready clients: a client adopted while still connecting no longer starts
+  with missed cycles.
+
 - The `Engine` runs one cycle a period: it wakes each idle client with a
   deadline (70 % of the period by default), mixes the outputs of the clients
   that finish in time, counts the late ones, and does not wake or touch a

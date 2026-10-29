@@ -18,6 +18,7 @@ use std::sync::atomic::Ordering;
 use std::time::Duration;
 
 use mare_protocol::ring::UmpEvent;
+use mare_protocol::segment::client_flags;
 use mare_sys::Waiter;
 
 use crate::clock::Clock;
@@ -204,6 +205,11 @@ impl<D: Device> Engine<D> {
                 continue;
             };
             let control = client.view.control();
+            if control.client_flags.load(Ordering::Acquire) & client_flags::READY == 0 {
+                // Adopted, but its audio thread is not waiting yet: a cycle
+                // it could not have run is not counted against it.
+                continue;
+            }
             if local.woken != 0 && control.done_cycle.load(Ordering::Acquire) != local.woken {
                 // Still on an earlier cycle: its buffers are its own until it
                 // finishes, so it is neither written nor woken.

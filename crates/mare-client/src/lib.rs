@@ -179,6 +179,7 @@ pub struct Client {
     slot: u32,
     generation: u32,
     last_cycle: u64,
+    ready: bool,
     info: HubInfo,
     _segment: SharedMemory,
     _registry: SharedMemory,
@@ -383,6 +384,7 @@ impl Client {
             slot,
             generation,
             last_cycle: 0,
+            ready: false,
             info,
             _segment: segment,
             _registry: registry,
@@ -440,6 +442,17 @@ impl Client {
         Ok(())
     }
 
+    /// Tells the hub, the first time, that this client waits for cycles now.
+    fn mark_ready(&mut self) {
+        if !self.ready {
+            self.view
+                .control()
+                .client_flags
+                .fetch_or(client_flags::READY, Ordering::Release);
+            self.ready = true;
+        }
+    }
+
     /// The cycle the hub has woken this client for and it has not run yet.
     fn pending(&self) -> Option<u64> {
         let cycle = self.view.control().cycle.load(Ordering::Acquire);
@@ -448,8 +461,12 @@ impl Client {
 
     /// Runs `process` on the pending cycle, if there is one, without waiting.
     /// Returns whether it ran.
+    ///
+    /// The hub does not wake a client before its first call to this,
+    /// [`Client::wait_cycle`] or [`Client::run`].
     pub fn try_cycle<F: FnOnce(&mut Cycle<'_>)>(&mut self, process: F) -> Result<bool, Stopped> {
         self.check_stop()?;
+        self.mark_ready();
         match self.pending() {
             Some(cycle) => {
                 self.run_one(cycle, process);
@@ -466,6 +483,7 @@ impl Client {
         timeout: Duration,
         process: F,
     ) -> Result<bool, Stopped> {
+        self.mark_ready();
         let start = Instant::now();
         loop {
             let seen = self.go.seen();

@@ -484,7 +484,12 @@ impl Client {
     }
 
     /// Runs `process` once a cycle until the hub stops or goes away.
+    ///
+    /// The calling thread is promoted to real-time priority while this runs
+    /// (see `mare_sys::promote_current_thread`), and let go when it returns.
+    /// A thread that calls [`Client::wait_cycle`] itself should do the same.
     pub fn run<F: FnMut(&mut Cycle<'_>)>(&mut self, mut process: F) -> Stopped {
+        let _promoted = mare_sys::promote_current_thread().ok();
         loop {
             if let Err(stopped) = self.wait_cycle(Duration::from_millis(100), &mut process) {
                 return stopped;

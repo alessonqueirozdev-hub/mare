@@ -135,3 +135,16 @@ fn a_process_is_seen_to_end() {
     child.wait().unwrap();
     assert!(watch.has_exited());
 }
+
+#[test]
+fn a_thread_is_promoted_and_let_go() {
+    std::thread::spawn(|| {
+        let promoted = mare_sys::promote_current_thread().unwrap();
+        assert_eq!(promoted.is_promoted(), cfg!(windows));
+        drop(promoted);
+        // Twice on the same thread is fine once the first is let go.
+        mare_sys::promote_current_thread().unwrap();
+    })
+    .join()
+    .unwrap();
+}

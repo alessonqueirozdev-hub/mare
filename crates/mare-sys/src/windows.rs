@@ -14,10 +14,11 @@ use windows_sys::Win32::System::Memory::{
     MapViewOfFile, OpenFileMappingW, PAGE_READWRITE, UnmapViewOfFile, VirtualQuery,
 };
 use windows_sys::Win32::System::Threading::{
-    CREATE_WAITABLE_TIMER_HIGH_RESOLUTION, CreateEventW, CreateWaitableTimerExW,
-    EVENT_MODIFY_STATE, INFINITE, OpenEventW, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION,
-    PROCESS_SYNCHRONIZE, SYNCHRONIZATION_SYNCHRONIZE, SetEvent, SetWaitableTimer, TIMER_ALL_ACCESS,
-    WaitForMultipleObjects, WaitForSingleObject,
+    AVRT_PRIORITY_HIGH, AvRevertMmThreadCharacteristics, AvSetMmThreadCharacteristicsW,
+    AvSetMmThreadPriority, CREATE_WAITABLE_TIMER_HIGH_RESOLUTION, CreateEventW,
+    CreateWaitableTimerExW, EVENT_MODIFY_STATE, INFINITE, OpenEventW, OpenProcess,
+    PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_SYNCHRONIZE, SYNCHRONIZATION_SYNCHRONIZE, SetEvent,
+    SetWaitableTimer, TIMER_ALL_ACCESS, WaitForMultipleObjects, WaitForSingleObject,
 };
 
 fn wide(name: &str) -> Vec<u16> {
@@ -272,5 +273,37 @@ impl ProcessWatch {
     pub(crate) fn has_exited(&self) -> bool {
         // SAFETY: the handle is an open process; a zero timeout never blocks.
         unsafe { WaitForSingleObject(self.process.0, 0) == WAIT_OBJECT_0 }
+    }
+}
+
+pub(crate) struct RealtimeThread {
+    task: HANDLE,
+}
+
+impl RealtimeThread {
+    pub(crate) fn promote() -> io::Result<Self> {
+        let name = wide("Pro Audio");
+        let mut index = 0u32;
+        // SAFETY: plain call; the name is NUL-terminated and outlives it.
+        let task = unsafe { AvSetMmThreadCharacteristicsW(name.as_ptr(), &mut index) };
+        if task.is_null() {
+            return Err(io::Error::last_os_error());
+        }
+        // SAFETY: `task` was just returned for this thread. A failure here
+        // leaves the task's own priority, which is already raised.
+        unsafe { AvSetMmThreadPriority(task, AVRT_PRIORITY_HIGH) };
+        Ok(Self { task })
+    }
+
+    pub(crate) fn is_promoted(&self) -> bool {
+        true
+    }
+}
+
+impl Drop for RealtimeThread {
+    fn drop(&mut self) {
+        // SAFETY: the handle came from `AvSetMmThreadCharacteristicsW` on
+        // this thread, which the guard cannot leave.
+        unsafe { AvRevertMmThreadCharacteristics(self.task) };
     }
 }

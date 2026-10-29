@@ -239,6 +239,44 @@ fn poll_wait(word: &AtomicU32, seen: u32, timeout: Duration) -> bool {
     }
 }
 
+/// A real-time thread's raised priority, for as long as the value lives.
+///
+/// Made by [`promote_current_thread`], and dropped on the same thread (it is
+/// neither `Send` nor `Sync`).
+pub struct RealtimeThread {
+    inner: imp::RealtimeThread,
+    _not_send: std::marker::PhantomData<*const ()>,
+}
+
+impl RealtimeThread {
+    /// Whether the system raised the thread's priority. Where MARÉ does not
+    /// know how yet (not Windows), it did not.
+    pub fn is_promoted(&self) -> bool {
+        self.inner.is_promoted()
+    }
+}
+
+impl fmt::Debug for RealtimeThread {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("RealtimeThread")
+            .field("promoted", &self.is_promoted())
+            .finish()
+    }
+}
+
+/// Raises the calling thread to the priority audio threads run at: on
+/// Windows, registers it with the Multimedia Class Scheduler Service as a
+/// "Pro Audio" task at high priority. Elsewhere it changes nothing yet, and
+/// says so through [`RealtimeThread::is_promoted`].
+///
+/// Call it once, when the thread starts, not on the real-time path.
+pub fn promote_current_thread() -> io::Result<RealtimeThread> {
+    imp::RealtimeThread::promote().map(|inner| RealtimeThread {
+        inner,
+        _not_send: std::marker::PhantomData,
+    })
+}
+
 /// Watches whether another process has ended.
 pub struct ProcessWatch {
     inner: imp::ProcessWatch,

@@ -214,6 +214,7 @@ pub struct RunningHub<D: Device> {
     engine: Option<JoinHandle<(Engine<D>, Option<DeviceError>)>>,
     keeper: Option<JoinHandle<Housekeeper>>,
     shared: Arc<Shared>,
+    realtime: Arc<AtomicBool>,
 }
 
 impl<D: Device> fmt::Debug for RunningHub<D> {
@@ -234,9 +235,16 @@ pub fn start<D: Device + 'static>(
     let stop = Arc::new(AtomicBool::new(false));
     let shared = Arc::clone(engine.shared());
     let engine_stop = Arc::clone(&stop);
+    let realtime = Arc::new(AtomicBool::new(false));
+    let engine_realtime = Arc::clone(&realtime);
     let engine = std::thread::Builder::new()
         .name("mare-cycle".into())
         .spawn(move || {
+            // Kept for the thread's life. Failing to raise the priority is
+            // not fatal; `RunningHub::is_realtime` reports it.
+            let promoted = mare_sys::promote_current_thread().ok();
+            let raised = promoted.as_ref().is_some_and(|p| p.is_promoted());
+            engine_realtime.store(raised, Ordering::Release);
             while !engine_stop.load(Ordering::Acquire) {
                 if let Err(error) = engine.run_cycle() {
                     return (engine, Some(error));
@@ -259,6 +267,7 @@ pub fn start<D: Device + 'static>(
         engine: Some(engine),
         keeper: Some(keeper),
         shared,
+        realtime,
     })
 }
 
@@ -266,6 +275,13 @@ impl<D: Device> RunningHub<D> {
     /// The hub's counters.
     pub fn stats(&self) -> Stats {
         self.shared.counters.snapshot()
+    }
+
+    /// Whether the cycle thread runs at a raised, real-time priority (see
+    /// `mare_sys::promote_current_thread`). False until the thread has
+    /// started, and always false where MARÉ cannot raise it yet.
+    pub fn is_realtime(&self) -> bool {
+        self.realtime.load(Ordering::Acquire)
     }
 
     /// Whether the cycle thread has stopped by itself (its device failed).

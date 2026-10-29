@@ -19,13 +19,14 @@ use mare_hub::{DeviceConfig, HubConfig, RunningHub, Stats, SystemClock};
 
 /// What the scheduler may add to a wait, on a loaded test machine.
 ///
-/// The cycle thread runs at normal priority until it is registered with
-/// MMCSS (milestone 3), so any runnable thread can delay it by a scheduler
-/// quantum, 15 to 30 ms on desktop Windows. With a hundred client threads
-/// waking at once on eight logical cores, one wait of 21.8 ms was measured
-/// on the development laptop (budget 3.7 ms). That is preemption, not the
-/// hub waiting: `cycles.rs` proves on a fake clock that it never waits past
-/// the deadline by choice.
+/// The hub's cycle thread asks MMCSS for "Pro Audio" priority, but client
+/// threads here run at normal priority, and a CI runner may not run MMCSS at
+/// all. Before the cycle thread was promoted, a hundred client threads waking
+/// at once on eight logical cores delayed one wait to 21.8 ms (budget
+/// 3.7 ms) on the development laptop; promoted, three runs measured 1.3, 1.9
+/// and 4.1 ms. The bound is loose for machines without MMCSS. `cycles.rs`
+/// proves on a fake clock that the hub never waits past the deadline by
+/// choice.
 const SLACK: Duration = Duration::from_millis(100);
 
 fn device(period_frames: u32) -> DeviceConfig {
@@ -89,6 +90,7 @@ fn a_hundred_clients_on_their_own_threads() {
     wait_for(&hub, "200 cycles with everyone", |s| {
         s.cycles >= joined.cycles + 200
     });
+    eprintln!("cycle thread promoted: {}", hub.is_realtime());
     let (engine, error) = hub.stop();
     assert!(error.is_none());
     let stats = engine.stats();
@@ -99,6 +101,7 @@ fn a_hundred_clients_on_their_own_threads() {
         assert!(ran > 0);
     }
     assert!(stats.client_cycles > 0);
+    eprintln!("a hundred clients: {stats:?}");
     assert!(
         Duration::from_nanos(stats.longest_wait_ns) <= budget(256) + SLACK,
         "{stats:?}"

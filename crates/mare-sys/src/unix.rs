@@ -201,3 +201,16 @@ impl ProcessWatch {
         io::Error::last_os_error().raw_os_error() == Some(libc::ESRCH)
     }
 }
+
+/// Raising a thread's priority is not done yet on these systems.
+pub(crate) struct RealtimeThread;
+
+impl RealtimeThread {
+    pub(crate) fn promote() -> io::Result<Self> {
+        Ok(Self)
+    }
+
+    pub(crate) fn is_promoted(&self) -> bool {
+        false
+    }
+}

@@ -219,6 +219,11 @@ impl CaptureFifo {
     /// earlier packets is left out, and what was skipped before it is
     /// silence.
     ///
+    /// Positions must count the same frames as the packets. A stream whose
+    /// positions count something else (WASAPI in shared mode, where they
+    /// count the device's frames before the engine converts the rate) must
+    /// use [`CaptureFifo::push`] instead, or every packet loses frames.
+    ///
     /// # Panics
     ///
     /// If `bytes` is shorter than the frames need.
@@ -226,6 +231,14 @@ impl CaptureFifo {
         let skip = self.align(position, frames);
         let stride = format.bytes() * self.channels;
         self.push(&bytes[skip * stride..], format, frames - skip);
+    }
+
+    /// Adds a packet of `frames` frames the system flagged silent, without a
+    /// position.
+    pub fn push_silent_packet(&mut self, frames: usize) {
+        self.stats.packets += 1;
+        self.stats.silent_frames += frames as u64;
+        self.push_silence(frames);
     }
 
     /// Adds a packet of `frames` frames of silence recorded at `position`,

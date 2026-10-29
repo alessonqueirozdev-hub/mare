@@ -806,15 +806,26 @@ impl Device for WasapiDevice {
                 if flags & AUDCLNT_BUFFERFLAGS_DATA_DISCONTINUITY.0 as u32 != 0 {
                     input.fifo.note_discontinuity();
                 }
-                if flags & AUDCLNT_BUFFERFLAGS_SILENT.0 as u32 != 0 || data.is_null() {
-                    input.fifo.push_silence_at(position, frames as usize);
-                } else {
-                    let bytes = std::slice::from_raw_parts(data, frames as usize * frame_bytes);
-                    // Positioned, because in exclusive mode the system may
-                    // hand a packet that was already read over again.
-                    input
-                        .fifo
-                        .push_at(position, bytes, input.sample, frames as usize);
+                let silent = flags & AUDCLNT_BUFFERFLAGS_SILENT.0 as u32 != 0 || data.is_null();
+                // Only in exclusive mode is a packet's device position in the
+                // stream's own frames, and only there does the system hand a
+                // packet over twice. In shared mode the position counts the
+                // device's frames, which the engine may convert: the Realtek
+                // microphone's advance 441 for every 480 of the stream.
+                let exclusive = self.mode == Mode::Exclusive;
+                match (silent, exclusive) {
+                    (true, true) => input.fifo.push_silence_at(position, frames as usize),
+                    (true, false) => input.fifo.push_silent_packet(frames as usize),
+                    (false, exclusive) => {
+                        let bytes = std::slice::from_raw_parts(data, frames as usize * frame_bytes);
+                        if exclusive {
+                            input
+                                .fifo
+                                .push_at(position, bytes, input.sample, frames as usize);
+                        } else {
+                            input.fifo.push(bytes, input.sample, frames as usize);
+                        }
+                    }
                 }
                 input.capture.ReleaseBuffer(frames).map_err(device_error)?;
             }

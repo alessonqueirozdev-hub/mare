@@ -28,7 +28,8 @@ from Recife: every program built on Manguebyte will speak MARÉ.
 
 > **Status: milestone 2.** The shared-memory layout, the client library and
 > a hub tested against fake devices are built and tested on Windows and
-> Linux; no real audio device is driven yet. [docs/DESIGN.md](docs/DESIGN.md)
+> Linux. Milestone 3 is under way: a WASAPI output device, which has played
+> silence through one real device ([docs/HARDWARE.md](docs/HARDWARE.md)). [docs/DESIGN.md](docs/DESIGN.md)
 > is the specification, including what MARÉ is not (not a kernel driver, and
 > not lower latency than the hardware allows);
 > [docs/LAYOUT.md](docs/LAYOUT.md) is the shared memory byte by byte, and
@@ -42,6 +43,7 @@ from Recife: every program built on Manguebyte will speak MARÉ.
 | `mare-sys` | Named shared memory, doorbells, process watches, per system |
 | `mare-client` | Connect to a hub and run a cycle each period |
 | `mare-hub` | The hub: the cycle engine, the housekeeper, a fake device |
+| `mare-wasapi` | A WASAPI output device, exclusive or shared (Windows) |
 
 ```bash
 cargo test --workspace

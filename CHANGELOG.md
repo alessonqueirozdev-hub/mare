@@ -7,6 +7,31 @@ break the protocol and the API.
 
 ## Unreleased
 
+### WASAPI (`mare-wasapi`)
+
+- `WasapiDevice`, a `mare_hub::Device` for a WASAPI render endpoint,
+  event-driven, in exclusive mode (the device's own format, negotiated
+  from 32-bit float down to 16-bit integer, and its smallest period, with
+  the realignment a driver may ask for) or in shared mode with
+  `IAudioClient3`'s small periods. The cycle thread waits on the device's
+  event and hands it each period's mix, converted to the device's format,
+  without allocating. `render_endpoints` lists outputs without opening them;
+  `Latency` gives the period, the buffer and the driver's stream latency.
+- `format`: conversion between the hub's floats and 32-bit float, 16-bit,
+  24-bit (packed or in 32) and 32-bit integer, clamped, NaN as silence, a
+  round trip within half a step.
+- Tests play silence only and never open a device named UMC or Behringer;
+  the exclusive-mode test is run by hand. `examples/tone.rs` plays a quiet
+  sine through a named device, for trying MARÉ by hand;
+  [docs/HARDWARE.md](docs/HARDWARE.md) records what was tried.
+
+### Real-time priority
+
+- `mare_sys::promote_current_thread` registers a thread with MMCSS as
+  "Pro Audio" on Windows. The hub's cycle thread and `Client::run` use it.
+  With a hundred client threads, the hub's longest wait fell from 21.8 ms
+  to between 1.3 and 4.1 ms, on a budget of 3.7 ms.
+
 ### Protocol (`mare-protocol`)
 
 - The shared-memory layout, version 0.1, described byte by byte in

@@ -3,8 +3,7 @@
 What the code owes, so that shortcuts are taken on purpose and paid back in
 order. Update it when an item is paid back or a new one is taken on.
 
-Last audit: 2026-10-29, covering `mare-protocol`, `mare-sys`,
-`mare-client` and `mare-hub` at the end of milestone 2.
+Last audit: 2026-10-29, covering every crate, during milestone 3.
 
 ## Scoring
 
@@ -20,7 +19,7 @@ Each item is scored from 1 to 5 on three axes, as in Manguebyte:
 
 | # | Item | Type | Impact | Risk | Effort | Priority |
 |---|---|---|---|---|---|---|
-| 1 | The cycle thread runs at normal priority: it is not registered with MMCSS ("Pro Audio") on Windows nor given a real-time priority elsewhere, so any runnable thread can delay it by a scheduler quantum. With a hundred client threads waking at once on eight logical cores, one wait of 21.8 ms was measured on a 3.7 ms budget (`tests/threads.rs`, whose bound is 100 ms because of it). Client threads have the same problem, and the client library offers no way to raise them | Code | 5 | 4 | 2 | 36 |
+| 1 | Real-time priority is Windows-only: `promote_current_thread` registers a thread with MMCSS ("Pro Audio", high), which the hub's cycle thread and `Client::run` use, but changes nothing on Linux or macOS (`SCHED_FIFO` through RTKit, and Mach time-constraint threads, are the plan). On Windows it cut the hub's longest wait among a hundred client threads from 21.8 ms to 1.3 to 4.1 ms on a 3.7 ms budget; a CI runner without MMCSS still needs the real-time tests' loose bound | Code | 4 | 3 | 2 | 28 |
 | 2 | Doorbells on Linux and macOS poll their counter (64 spins, 32 yields, then sleeps of up to 50 µs) because there is no wake object yet. It works and is tested on Linux, but adds up to about 60 µs of latency per wake and keeps a waiting thread busy. A futex on the counter (Linux) and a semaphore or `os_sync_wait_on_address` (macOS) are the plan; the counter already lives in shared memory for that reason | Code | 3 | 3 | 2 | 24 |
 | 3 | CI exists only as a file: there is no remote repository, so `.github/workflows/ci.yml` has never run. Windows and Linux (Ubuntu under WSL, x86-64) are tested by hand on the development laptop; macOS and Arm Linux have never compiled MARÉ, and nor has the minimum Rust version (1.85) | Test | 3 | 4 | 1 | 35 |
 | 4 | The hub reads and writes a client's audio through plain slices of shared memory. A client that writes its outputs after marking a cycle done races with the hub's read: the values may be garbage, and bounds are never at risk, but in Rust's memory model it is a data race. Copying with volatile reads, or through `AtomicU32`, would make a hostile client's effect defined | Code | 1 | 3 | 2 | 16 |
@@ -34,3 +33,9 @@ Each item is scored from 1 to 5 on three axes, as in Manguebyte:
 | 12 | There is no C header (`mare.h`) or C client library, so "any language can implement either side" is a claim about the layout, checked in Rust against byte offsets but not yet from a second language | Architecture | 3 | 2 | 3 | 15 |
 | 13 | The real-time tests (`threads.rs`, `process.rs`) can only bound what holds on a loaded machine, so their bounds are loose: a client that keeps up must be heard in half the cycles, and the hub's longest wait must stay within 100 ms of the budget. The exact accounting is proved on a fake clock (`cycles.rs`) | Test | 1 | 2 | 3 | 9 |
 | 14 | A client learns that its hub has gone only when one of its waits times out (every 100 ms in `Client::run`). Waiting on the hub's process handle together with the doorbell would make it immediate on Windows | Code | 1 | 1 | 2 | 8 |
+| 15 | `WasapiDevice` is output only: no capture, so the hub's device inputs are silence. Duplex needs a capture stream on the same period, and a decision on which of the two events paces the cycle | Architecture | 4 | 2 | 3 | 18 |
+| 16 | A device that fails (unplugged, taken, invalidated) stops the hub's cycle thread with `DeviceError::Lost`; nothing reopens it or carries on without it. Hot-plug is milestone 4 | Architecture | 3 | 3 | 3 | 18 |
+| 17 | Exclusive mode has been compiled and its test written, but not yet run on any device (it takes the device from other programs, so it is run by hand). Shared mode has been run on one output only (Realtek), whose driver offers no period below 480 frames; small shared periods and the UMC404HD are untried (docs/HARDWARE.md) | Test | 3 | 3 | 1 | 30 |
+| 18 | Shared mode needs `IAudioClient3` (Windows 10 or later) and refuses to open without it, rather than falling back to `IAudioClient` with the engine's default period | Code | 1 | 1 | 1 | 10 |
+| 19 | Latency is said only as WASAPI reports it (period, buffer, the driver's stream latency, which the Realtek driver gives as 0 in shared mode); nothing yet measures a round trip through a loopback cable, which DESIGN.md promises | Test | 3 | 2 | 3 | 15 |
+| 20 | Exclusive mode tries formats at the mixer's channel count and sample rate (or the one asked for) only; a device whose exclusive formats have other channel counts is refused rather than adapted | Code | 2 | 1 | 2 | 12 |

@@ -9,7 +9,9 @@ It belongs to the ecosystem of the
 from Recife.
 
 Status: milestone 2 is built (the shared-memory layout, the client library,
-and a hub tested against fake devices); the rest is design. This document is
+and a hub tested against fake devices), and milestone 3 is under way (a
+WASAPI output device, run in shared mode on one device so far); the rest is
+design. This document is
 the specification the code follows, and it changes as the code proves or
 disproves it. Where the code has changed it, the text says so. The layout
 itself, byte by byte, is in [LAYOUT.md](LAYOUT.md); what the code still owes
@@ -84,7 +86,7 @@ or LGPL projects (JACK, PipeWire's GPL parts, ASIO4ALL).
 One hub runs per user session. It opens the devices it is configured to use,
 picks one of them as the **master clock**, and runs one **cycle** per period
 of that device on a real-time thread (on Windows, registered with MMCSS as
-"Pro Audio"). Each cycle:
+"Pro Audio", which is built; on other systems not yet). Each cycle:
 
 1. reads the input of every device for this period (devices other than the
    master go through an adaptive resampler, below);
@@ -242,7 +244,10 @@ As in Manguebyte, nothing is claimed before its test exists.
    (the specification is written; the trademark search is not done).
 2. The shared-memory layout and the client library, tested against a hub
    with fake devices (built).
-3. The hub on Windows with one device (WASAPI), one client, then many.
+3. The hub on Windows with one device (WASAPI), one client, then many
+   (under way: output in exclusive and shared mode is built; shared mode has
+   played silence on one device; capture and the hand-run sessions of
+   [HARDWARE.md](HARDWARE.md) are next).
 4. Several devices with drift correction; hot-plug.
 5. MIDI 2.0 on the same clock.
 6. The Manguebyte backend.

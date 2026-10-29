@@ -26,9 +26,26 @@ It is part of the ecosystem of the
 [Manguebyte Audio Framework](https://github.com/alessonqueirozdev-hub/manguebyte),
 from Recife: every program built on Manguebyte will speak MARÉ.
 
-> **Status: design.** Nothing is built yet. [docs/DESIGN.md](docs/DESIGN.md)
-> is the specification the code will follow, including what MARÉ is not
-> (not a kernel driver, and not lower latency than the hardware allows).
+> **Status: milestone 2.** The shared-memory layout, the client library and
+> a hub tested against fake devices are built and tested on Windows and
+> Linux; no real audio device is driven yet. [docs/DESIGN.md](docs/DESIGN.md)
+> is the specification, including what MARÉ is not (not a kernel driver, and
+> not lower latency than the hardware allows);
+> [docs/LAYOUT.md](docs/LAYOUT.md) is the shared memory byte by byte, and
+> [docs/TECH_DEBT.md](docs/TECH_DEBT.md) what the code still owes.
+
+## The pieces
+
+| Crate | What it is |
+|---|---|
+| `mare-protocol` | The shared-memory layout: no dependencies, no standard library |
+| `mare-sys` | Named shared memory, doorbells, process watches, per system |
+| `mare-client` | Connect to a hub and run a cycle each period |
+| `mare-hub` | The hub: the cycle engine, the housekeeper, a fake device |
+
+```bash
+cargo test --workspace
+```
 
 ## Licence
 

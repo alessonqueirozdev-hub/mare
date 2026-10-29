@@ -1,0 +1,54 @@
+name: CI
+
+on:
+  push:
+    # A branch named `ci/...` runs the whole CI when pushed, so a change can
+    # be checked on every system before it is merged.
+    branches: [main, "ci/**"]
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: -D warnings
+  RUSTDOCFLAGS: -D warnings
+
+jobs:
+  lint:
+    name: Format and lint (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # Each system compiles code the others do not (mare-sys has one
+        # module per platform), so each is linted.
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - run: cargo fmt --all --check
+      - run: cargo clippy --workspace --all-targets
+      - run: cargo doc --workspace --no-deps
+
+  test:
+    name: Test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, ubuntu-24.04-arm, windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      # The real-time tests share the machine with each other; one thread
+      # keeps their timing bounds meaningful on small runners.
+      - run: cargo test --workspace -- --test-threads=1
+
+  msrv:
+    name: Minimum Rust version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.85
+      - run: cargo check --workspace --all-targets

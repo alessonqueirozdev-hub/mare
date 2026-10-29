@@ -343,6 +343,7 @@ fn duplex(output: &Endpoint, input: &Endpoint, mode: Mode) {
         }
     });
     let after = engine.device().input_stats().unwrap();
+    let backlog = engine.device().input_backlog().unwrap();
     let stats = engine.stats();
     engine.shut_down();
     drop(engine);
@@ -352,9 +353,11 @@ fn duplex(output: &Endpoint, input: &Endpoint, mode: Mode) {
     let padded = after.padded - before.padded;
     let dropped = after.dropped - before.dropped;
     eprintln!(
-        "measured: {cycles} cycles, {frames} frames out; input delivered {}, padded {padded}, dropped {dropped}, discontinuities {}; client late {} busy {}",
+        "measured: {cycles} cycles, {frames} frames out; input delivered {}, padded {padded} in {} short cycles, dropped {dropped}, discontinuities {}, backlog at the end {} frames; client late {} busy {}",
         after.frames_in - before.frames_in,
+        after.short_cycles - before.short_cycles,
         after.discontinuities - before.discontinuities,
+        backlog,
         stats.late - hub_before.late,
         stats.busy - hub_before.busy,
     );

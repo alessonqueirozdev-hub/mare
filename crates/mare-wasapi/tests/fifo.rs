@@ -120,6 +120,35 @@ fn packets_of_any_size_wrap_around_the_storage() {
 }
 
 #[test]
+fn a_cushion_absorbs_packets_that_come_a_moment_late() {
+    // Packets of 4 come alternately just before and just after the cycle
+    // that wants them: without a cushion every other cycle runs short.
+    for (cushion, expect_short) in [(0, true), (4, false)] {
+        let mut fifo = CaptureFifo::new(2, 4, 16);
+        fifo.prime(cushion);
+        let mut next = 0;
+        for round in 0..100 {
+            let late = round % 2 == 1;
+            if !late {
+                fifo.push(&packet(next, 4), SampleFormat::F32, 4);
+                next += 4;
+            }
+            cycle(&mut fifo, 4);
+            if late {
+                fifo.push(&packet(next, 4), SampleFormat::F32, 4);
+                next += 4;
+            }
+        }
+        let stats = fifo.stats();
+        // Without a cushion only the first late packet costs anything: what
+        // came late stays queued and becomes the cushion.
+        assert_eq!(stats.short_cycles > 0, expect_short, "cushion {cushion}");
+        assert!(stats.short_cycles <= 1);
+        assert_eq!(stats.dropped, 0);
+    }
+}
+
+#[test]
 fn silent_packets_and_extra_channels_are_silence() {
     let mut fifo = CaptureFifo::new(1, 3, 6);
     fifo.push_silence(3);

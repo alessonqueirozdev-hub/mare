@@ -9,10 +9,17 @@
 //! Its length is bounded both ways, and every correction is counted:
 //!
 //! - a cycle that finds fewer frames than it needs gets what there is, then
-//!   silence (`padded`);
+//!   silence (`padded` frames, in `short_cycles` cycles); what arrives late
+//!   stays queued, so the queue grows by the shortfall and the next cycles
+//!   have it in hand;
 //! - when more than `max_backlog` frames are left after a cycle, the oldest
 //!   are dropped until one period is left (`dropped`), so that the input's
 //!   latency cannot grow without end when the two streams' clocks differ.
+//!
+//! Packets do not arrive exactly when the output asks for a period, so a
+//! queue that starts empty runs short whenever a packet comes a moment late.
+//! [`CaptureFifo::prime`] starts it with a cushion of silence (one period is
+//! usual), which delays the input by as much and absorbs that jitter.
 //!
 //! The storage is allocated once, by [`CaptureFifo::new`]; nothing after
 //! that allocates.
@@ -32,6 +39,8 @@ pub struct CaptureStats {
     /// Frames of silence handed to the hub because the stream had not
     /// delivered enough.
     pub padded: u64,
+    /// Cycles that got fewer frames than they needed.
+    pub short_cycles: u64,
     /// Frames dropped, oldest first, to keep the latency bounded.
     pub dropped: u64,
     /// Packets the system flagged as not following on from the one before
@@ -131,6 +140,17 @@ impl CaptureFifo {
         }
     }
 
+    /// Puts `frames` frames of silence ahead of everything recorded, as a
+    /// cushion against packets that come a moment late. The input is delayed
+    /// by as much. These frames are not counted as delivered.
+    pub fn prime(&mut self, frames: usize) {
+        for _ in 0..frames.min(self.capacity - self.len) {
+            let at = (self.read + self.len) % self.capacity * self.channels;
+            self.data[at..at + self.channels].fill(0.0);
+            self.len += 1;
+        }
+    }
+
     /// Counts a packet that does not follow on from the one before.
     pub fn note_discontinuity(&mut self) {
         self.stats.discontinuities += 1;
@@ -156,6 +176,9 @@ impl CaptureFifo {
         self.len -= available;
         self.stats.frames_out += available as u64;
         self.stats.padded += (frames - available) as u64;
+        if available < frames {
+            self.stats.short_cycles += 1;
+        }
         if self.len > self.max_backlog {
             let extra = self.len - self.period;
             self.read = (self.read + extra) % self.capacity;

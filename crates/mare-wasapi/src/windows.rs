@@ -591,6 +591,8 @@ pub(crate) fn open(
                 let backlog = 2 * buffer.max(input.buffer_frames) as usize;
                 input.fifo =
                     CaptureFifo::new(input.channels, stream.period_frames as usize, backlog);
+                // One period of cushion: see `fifo`.
+                input.fifo.prime(stream.period_frames as usize);
                 input
             });
             Ok(Opened {
@@ -697,6 +699,12 @@ impl WasapiDevice {
     /// step with the output, if there is an input.
     pub fn input_stats(&self) -> Option<CaptureStats> {
         self.input.as_ref().map(|input| input.fifo.stats())
+    }
+
+    /// Frames of input queued now, cushion included: how far the input lags
+    /// what the hub hands on, beyond the devices' own latency.
+    pub fn input_backlog(&self) -> Option<usize> {
+        self.input.as_ref().map(|input| input.fifo.len())
     }
 
     /// What the device's latency is made of, as WASAPI reports it.

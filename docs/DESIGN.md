@@ -158,9 +158,9 @@ sizes and alignment) and versioned.
 
 Waking is a **doorbell**: a counter in shared memory that one side adds to
 and the other waits on, plus one wake object per platform so that the
-waiter can sleep: a named auto-reset event on Windows (built), a futex on
-Linux and a semaphore on macOS (planned; until then those systems poll the
-counter). The hub waits for its clients with a high-resolution waitable
+waiter can sleep: a named auto-reset event on Windows and a futex on the
+counter itself on Linux (both built), a semaphore on macOS (planned; until
+then macOS polls the counter). The hub waits for its clients with a high-resolution waitable
 timer, so that a deadline under a millisecond ends on time. A client's audio
 thread waits on its doorbell, runs, marks the cycle done with a release
 store, rings the hub's doorbell and waits again. No locks, no allocation and

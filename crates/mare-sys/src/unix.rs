@@ -139,7 +139,8 @@ impl Drop for SharedMemory {
     }
 }
 
-/// No wake object: waiting polls the counter.
+/// No named object: on Linux the waiter sleeps on the counter itself with a
+/// futex; elsewhere it polls the counter.
 pub(crate) struct Wake;
 
 impl Wake {
@@ -151,7 +152,26 @@ impl Wake {
         Ok(Self)
     }
 
-    pub(crate) fn signal(&self) {}
+    #[cfg(target_os = "linux")]
+    pub(crate) fn signal(&self, word: &AtomicU32) {
+        // Not FUTEX_PRIVATE: the waiter may be in another process.
+        // SAFETY: `word` is a valid, aligned 32-bit atomic; waking has no
+        // other effect.
+        unsafe {
+            libc::syscall(
+                libc::SYS_futex,
+                word.as_ptr(),
+                libc::FUTEX_WAKE,
+                i32::MAX,
+                std::ptr::null::<libc::timespec>(),
+                std::ptr::null::<u32>(),
+                0,
+            );
+        }
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    pub(crate) fn signal(&self, _word: &AtomicU32) {}
 }
 
 pub(crate) struct Waiter;
@@ -166,6 +186,49 @@ impl Waiter {
     }
 }
 
+#[cfg(target_os = "linux")]
+pub(crate) fn wait(
+    _wake: &Wake,
+    word: &AtomicU32,
+    seen: u32,
+    timeout: Duration,
+    _waiter: &mut Waiter,
+) -> bool {
+    use std::sync::atomic::Ordering;
+    let start = std::time::Instant::now();
+    loop {
+        if word.load(Ordering::Acquire) != seen {
+            return true;
+        }
+        let elapsed = start.elapsed();
+        if elapsed >= timeout {
+            return false;
+        }
+        let remaining = timeout - elapsed;
+        let relative = libc::timespec {
+            tv_sec: remaining.as_secs() as libc::time_t,
+            tv_nsec: libc::c_long::from(remaining.subsec_nanos() as i32),
+        };
+        // Sleeps only while the counter still holds `seen`; returns at once
+        // (EAGAIN) if it changed in between, which the loop then sees. A
+        // timeout, an interruption or a spurious wake are all rechecked.
+        // SAFETY: `word` is a valid, aligned 32-bit atomic; `relative` lives
+        // across the call.
+        unsafe {
+            libc::syscall(
+                libc::SYS_futex,
+                word.as_ptr(),
+                libc::FUTEX_WAIT,
+                seen,
+                &relative as *const libc::timespec,
+                std::ptr::null::<u32>(),
+                0,
+            );
+        }
+    }
+}
+
+#[cfg(not(target_os = "linux"))]
 pub(crate) fn wait(
     _wake: &Wake,
     word: &AtomicU32,

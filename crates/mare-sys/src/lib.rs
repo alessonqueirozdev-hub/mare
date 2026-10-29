@@ -5,11 +5,12 @@
 //! - [`SharedMemory`]: a named segment both sides map (`CreateFileMappingW`
 //!   on Windows, `shm_open` elsewhere);
 //! - [`Doorbell`]: a counter in shared memory that one side adds to and the
-//!   other waits on. The counter is the truth; on Windows a named auto-reset
-//!   event lets the waiter sleep until it changes. Other systems have no wake
-//!   object yet and wait by polling the counter (spinning briefly, then
+//!   other waits on. The counter is the truth; the waiter sleeps until it
+//!   changes, on a named auto-reset event on Windows and on the counter
+//!   itself with a futex on Linux. Other systems (macOS among them) have no
+//!   wake object yet and wait by polling the counter (spinning briefly, then
 //!   sleeping in steps of 50 µs), which works but costs latency and some
-//!   processor time; a futex on Linux and a semaphore on macOS are the plan;
+//!   processor time;
 //! - [`ProcessWatch`]: whether another process has ended, so that the hub
 //!   frees a client that died.
 //!
@@ -17,8 +18,8 @@
 //!
 //! Only [`Doorbell::ring`] and [`Doorbell::wait`] are meant for real-time
 //! threads. Neither allocates or takes a lock; `ring` makes one system call
-//! (`SetEvent`) on Windows and none elsewhere, and `wait` is the one blocking
-//! call the protocol allows.
+//! (`SetEvent` on Windows, `FUTEX_WAKE` on Linux) and none elsewhere, and
+//! `wait` is the one blocking call the protocol allows.
 
 use std::fmt;
 use std::io;
@@ -196,7 +197,7 @@ impl Doorbell {
     /// Adds one to the counter (release) and wakes the waiter.
     pub fn ring(&self) {
         self.counter().fetch_add(1, Ordering::Release);
-        self.wake.signal();
+        self.wake.signal(self.counter());
     }
 
     /// Waits until the counter differs from `seen`, or `timeout` passes.
@@ -216,7 +217,7 @@ impl fmt::Debug for Doorbell {
 
 /// Polls `word` until it differs from `seen` or `timeout` passes: the wait
 /// of systems with no wake object.
-#[cfg_attr(windows, allow(dead_code))]
+#[cfg_attr(any(windows, target_os = "linux"), allow(dead_code))]
 fn poll_wait(word: &AtomicU32, seen: u32, timeout: Duration) -> bool {
     let start = std::time::Instant::now();
     let mut spins = 0u32;

@@ -38,6 +38,13 @@ break the protocol and the API.
   sine through a named device, for trying MARÉ by hand;
   [docs/HARDWARE.md](docs/HARDWARE.md) records what was tried.
 
+### Doorbells on Linux
+
+- A waiting thread sleeps on the doorbell's counter with a futex instead
+  of polling it; ringing wakes it with `FUTEX_WAKE`. With a hundred
+  clients under WSL, the hub's longest wait was 1.04 ms and no client was
+  late. macOS still polls.
+
 ### Real-time priority
 
 - `mare_sys::promote_current_thread` registers a thread with MMCSS as

@@ -173,7 +173,7 @@ impl Wake {
         })
     }
 
-    pub(crate) fn signal(&self) {
+    pub(crate) fn signal(&self, _word: &AtomicU32) {
         // SAFETY: the handle is an open event.
         unsafe { SetEvent(self.event.0) };
     }

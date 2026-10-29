@@ -24,6 +24,9 @@
 //! The storage is allocated once, by [`CaptureFifo::new`]; nothing after
 //! that allocates.
 
+use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
+
 use mare_hub::AudioBlock;
 
 use crate::format::{SampleFormat, load};
@@ -57,6 +60,12 @@ pub struct CaptureStats {
     pub skipped_frames: u64,
     /// The largest packet, in frames.
     pub largest_packet: u64,
+    /// Frames of packets the system flagged as silent.
+    pub silent_frames: u64,
+    /// Packets not flagged silent whose samples were all exactly zero.
+    pub zero_packets: u64,
+    /// Packets delivered, of any kind.
+    pub packets: u64,
 }
 
 /// A bounded queue of recorded frames.
@@ -71,6 +80,7 @@ pub struct CaptureFifo {
     len: usize,
     next_position: Option<u64>,
     stats: CaptureStats,
+    monitor: CaptureMonitor,
 }
 
 impl CaptureFifo {
@@ -95,6 +105,7 @@ impl CaptureFifo {
             len: 0,
             next_position: None,
             stats: CaptureStats::default(),
+            monitor: CaptureMonitor::new(),
         }
     }
 
@@ -111,6 +122,13 @@ impl CaptureFifo {
     /// The counters so far.
     pub fn stats(&self) -> CaptureStats {
         self.stats
+    }
+
+    /// A handle another thread can read the counters through while this
+    /// queue is in use; they are published at the end of every
+    /// [`CaptureFifo::pop`].
+    pub fn monitor(&self) -> CaptureMonitor {
+        self.monitor.clone()
     }
 
     fn push_frame(&mut self, mut sample: impl FnMut(usize) -> f32) {
@@ -137,6 +155,11 @@ impl CaptureFifo {
         let size = format.bytes();
         let stride = size * self.channels;
         assert!(bytes.len() >= frames * stride);
+        self.stats.packets += 1;
+        if frames > 0 && bytes[..frames * stride].iter().all(|&b| b == 0) {
+            // Zero bytes are a zero sample in every format here.
+            self.stats.zero_packets += 1;
+        }
         for frame in 0..frames {
             let start = frame * stride;
             self.push_frame(|channel| {
@@ -209,6 +232,8 @@ impl CaptureFifo {
     /// placed as [`CaptureFifo::push_at`] places packets.
     pub fn push_silence_at(&mut self, position: u64, frames: usize) {
         let skip = self.align(position, frames);
+        self.stats.packets += 1;
+        self.stats.silent_frames += (frames - skip) as u64;
         self.push_silence(frames - skip);
     }
 
@@ -246,5 +271,94 @@ impl CaptureFifo {
             self.len -= extra;
             self.stats.dropped += extra as u64;
         }
+        self.monitor.publish(&self.stats, self.len);
+    }
+}
+
+/// A queue's counters, readable from another thread while it runs.
+///
+/// Each field is published on its own with relaxed ordering, so a reading
+/// taken while the queue publishes may mix two cycles' values; each value is
+/// one the queue really had. Publishing is a handful of atomic stores: no
+/// allocation, no lock.
+#[derive(Clone, Debug, Default)]
+pub struct CaptureMonitor {
+    cells: Arc<Cells>,
+}
+
+#[derive(Debug, Default)]
+struct Cells {
+    frames_in: AtomicU64,
+    frames_out: AtomicU64,
+    padded: AtomicU64,
+    short_cycles: AtomicU64,
+    dropped: AtomicU64,
+    discontinuities: AtomicU64,
+    position_jumps: AtomicU64,
+    repeated_frames: AtomicU64,
+    skipped_frames: AtomicU64,
+    largest_packet: AtomicU64,
+    silent_frames: AtomicU64,
+    zero_packets: AtomicU64,
+    packets: AtomicU64,
+    backlog: AtomicU64,
+    cycles: AtomicU64,
+}
+
+impl CaptureMonitor {
+    /// A monitor nothing publishes to yet.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    fn publish(&self, stats: &CaptureStats, backlog: usize) {
+        let c = &self.cells;
+        let set = |cell: &AtomicU64, value: u64| cell.store(value, Ordering::Relaxed);
+        set(&c.frames_in, stats.frames_in);
+        set(&c.frames_out, stats.frames_out);
+        set(&c.padded, stats.padded);
+        set(&c.short_cycles, stats.short_cycles);
+        set(&c.dropped, stats.dropped);
+        set(&c.discontinuities, stats.discontinuities);
+        set(&c.position_jumps, stats.position_jumps);
+        set(&c.repeated_frames, stats.repeated_frames);
+        set(&c.skipped_frames, stats.skipped_frames);
+        set(&c.largest_packet, stats.largest_packet);
+        set(&c.silent_frames, stats.silent_frames);
+        set(&c.zero_packets, stats.zero_packets);
+        set(&c.packets, stats.packets);
+        set(&c.backlog, backlog as u64);
+        c.cycles.fetch_add(1, Ordering::Relaxed);
+    }
+
+    /// The counters as last published.
+    pub fn stats(&self) -> CaptureStats {
+        let c = &self.cells;
+        let get = |cell: &AtomicU64| cell.load(Ordering::Relaxed);
+        CaptureStats {
+            frames_in: get(&c.frames_in),
+            frames_out: get(&c.frames_out),
+            padded: get(&c.padded),
+            short_cycles: get(&c.short_cycles),
+            dropped: get(&c.dropped),
+            discontinuities: get(&c.discontinuities),
+            position_jumps: get(&c.position_jumps),
+            repeated_frames: get(&c.repeated_frames),
+            skipped_frames: get(&c.skipped_frames),
+            largest_packet: get(&c.largest_packet),
+            silent_frames: get(&c.silent_frames),
+            zero_packets: get(&c.zero_packets),
+            packets: get(&c.packets),
+        }
+    }
+
+    /// Frames queued after the last cycle.
+    pub fn backlog(&self) -> u64 {
+        self.cells.backlog.load(Ordering::Relaxed)
+    }
+
+    /// Cycles published so far.
+    pub fn cycles(&self) -> u64 {
+        self.cells.cycles.load(Ordering::Relaxed)
     }
 }

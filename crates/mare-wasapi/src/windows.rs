@@ -23,7 +23,7 @@ use windows::Win32::System::Com::{
 use windows::Win32::System::Threading::{CreateEventW, WaitForSingleObject};
 use windows::core::{HSTRING, PWSTR};
 
-use crate::fifo::{CaptureFifo, CaptureStats};
+use crate::fifo::{CaptureFifo, CaptureMonitor, CaptureStats};
 use crate::format::{SampleFormat, interleave};
 use crate::{Endpoint, Latency, Mode, OpenOptions, WasapiError};
 
@@ -699,6 +699,13 @@ impl WasapiDevice {
     /// step with the output, if there is an input.
     pub fn input_stats(&self) -> Option<CaptureStats> {
         self.input.as_ref().map(|input| input.fifo.stats())
+    }
+
+    /// A handle to read the input counters from another thread while the
+    /// hub runs the device, if there is an input. Take it before handing the
+    /// device to the hub.
+    pub fn input_monitor(&self) -> Option<CaptureMonitor> {
+        self.input.as_ref().map(|input| input.fifo.monitor())
     }
 
     /// Frames the input's buffer holds, if there is an input.

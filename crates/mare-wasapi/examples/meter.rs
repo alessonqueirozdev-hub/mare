@@ -71,6 +71,7 @@ fn main() {
     );
 
     let hub = HubName::new("meter").unwrap();
+    let monitor = device.input_monitor().expect("the device has an input");
     let running = mare_hub::start(
         &HubConfig::new(hub.clone()),
         device,
@@ -100,13 +101,30 @@ fn main() {
     });
 
     println!("speak, tap or clap near the input:");
-    let until = Instant::now() + Duration::from_secs_f64(seconds);
+    println!(
+        "    time    level        | each quarter second: frames in (flagged silent, packets of zeros), padded, dropped; queued"
+    );
+    let begun = Instant::now();
+    let until = begun + Duration::from_secs_f64(seconds);
+    let mut last = monitor.stats();
     while Instant::now() < until && !running.has_stopped() {
         std::thread::sleep(Duration::from_millis(250));
         let level = f32::from_bits(peak.swap(0, Ordering::Relaxed));
         let db = 20.0 * level.max(1e-6).log10();
-        let bar = ((db + 60.0).max(0.0) / 1.5) as usize;
-        println!("{db:7.1} dBFS |{}", "#".repeat(bar.min(40)));
+        let bar = ((db + 60.0).max(0.0) / 2.0) as usize;
+        let now = monitor.stats();
+        println!(
+            "{:6.2} s {db:7.1} dBFS |{:<30}| in {:6} ({:6}, {:3}), padded {:6}, dropped {:6}; {:5} queued",
+            begun.elapsed().as_secs_f64(),
+            "#".repeat(bar.min(30)),
+            now.frames_in - last.frames_in,
+            now.silent_frames - last.silent_frames,
+            now.zero_packets - last.zero_packets,
+            now.padded - last.padded,
+            now.dropped - last.dropped,
+            monitor.backlog(),
+        );
+        last = now;
     }
     let (engine, error) = running.stop();
     let stats = engine.stats();
@@ -122,8 +140,18 @@ fn main() {
     );
     if let Some(input) = input_stats {
         println!(
-            "input: {} frames delivered, {} handed on, {} padded, {} dropped, {} discontinuities",
-            input.frames_in, input.frames_out, input.padded, input.dropped, input.discontinuities
+            "input: {} frames delivered in {} packets ({} flagged silent, {} packets of zeros), {} handed on, {} padded in {} short cycles, {} dropped, {} discontinuities, {} repeated, {} skipped",
+            input.frames_in,
+            input.packets,
+            input.silent_frames,
+            input.zero_packets,
+            input.frames_out,
+            input.padded,
+            input.short_cycles,
+            input.dropped,
+            input.discontinuities,
+            input.repeated_frames,
+            input.skipped_frames
         );
     }
 }

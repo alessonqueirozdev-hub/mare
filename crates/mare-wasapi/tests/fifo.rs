@@ -199,6 +199,25 @@ fn a_repeat_every_cycle_delivers_each_frame_once() {
 }
 
 #[test]
+fn silent_and_all_zero_packets_are_told_apart_and_published() {
+    let mut fifo = CaptureFifo::new(2, 4, 8);
+    let monitor = fifo.monitor();
+    fifo.push_silence_at(0, 4); // flagged silent by the system
+    fifo.push_at(4, &[0u8; 4 * 2 * 4], SampleFormat::F32, 4); // zeros, not flagged
+    fifo.push_at(8, &packet(8, 4), SampleFormat::F32, 4); // sound
+    assert_eq!(monitor.cycles(), 0, "published only at the end of a cycle");
+    cycle(&mut fifo, 4);
+    let seen = monitor.stats();
+    assert_eq!(seen, fifo.stats());
+    assert_eq!(
+        (seen.packets, seen.silent_frames, seen.zero_packets),
+        (3, 4, 1)
+    );
+    assert_eq!(monitor.backlog(), 8);
+    assert_eq!(monitor.cycles(), 1);
+}
+
+#[test]
 fn silent_packets_and_extra_channels_are_silence() {
     let mut fifo = CaptureFifo::new(1, 3, 6);
     fifo.push_silence(3);

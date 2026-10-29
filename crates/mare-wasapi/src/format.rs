@@ -70,7 +70,7 @@ fn store(format: SampleFormat, x: f32, out: &mut [u8]) {
     }
 }
 
-fn load(format: SampleFormat, bytes: &[u8]) -> f32 {
+pub(crate) fn load(format: SampleFormat, bytes: &[u8]) -> f32 {
     match format {
         SampleFormat::F32 => f32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]),
         SampleFormat::I16 => from_int(i32::from(i16::from_le_bytes([bytes[0], bytes[1]])), 16),

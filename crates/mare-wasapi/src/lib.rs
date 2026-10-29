@@ -20,6 +20,7 @@
 //!
 //! Everything but [`format`] is Windows-only; elsewhere the crate is empty.
 
+pub mod fifo;
 pub mod format;
 
 #[cfg(windows)]

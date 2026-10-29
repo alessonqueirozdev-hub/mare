@@ -339,6 +339,28 @@ impl SegmentLayout {
 }
 
 impl SegmentHeader {
+    /// A copy of the header at the start of a mapping of `mapped` bytes,
+    /// checked for alignment and length but not yet validated.
+    ///
+    /// # Safety
+    ///
+    /// `base` must point to `mapped` readable bytes.
+    pub unsafe fn read_from(base: NonNull<u8>, mapped: u64) -> Result<Self, LayoutError> {
+        if base.as_ptr() as usize % BLOCK_ALIGN != 0 {
+            return Err(LayoutError::Misaligned);
+        }
+        let needed = size_of::<Self>() as u64;
+        if mapped < needed {
+            return Err(LayoutError::Truncated {
+                needed,
+                available: mapped,
+            });
+        }
+        // SAFETY: aligned and long enough, as checked; any bytes are a valid
+        // header.
+        Ok(unsafe { base.cast::<Self>().read_volatile() })
+    }
+
     /// The client's name, or `None` if its bytes are not UTF-8.
     pub fn name(&self) -> Option<&str> {
         let len = (self.name_len as usize).min(NAME_CAPACITY);

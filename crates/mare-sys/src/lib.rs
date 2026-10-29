@@ -133,6 +133,10 @@ impl Waiter {
     }
 }
 
+// SAFETY: a waiter is used by one thread at a time (`wait` takes it by
+// `&mut`); the timer handle it may hold can move between threads.
+unsafe impl Send for Waiter {}
+
 impl fmt::Debug for Waiter {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Waiter").finish_non_exhaustive()
@@ -256,6 +260,11 @@ impl ProcessWatch {
         self.inner.has_exited()
     }
 }
+
+// SAFETY: a process handle, or a process id, is usable from any thread.
+unsafe impl Send for ProcessWatch {}
+// SAFETY: as above; `has_exited` only queries.
+unsafe impl Sync for ProcessWatch {}
 
 impl fmt::Debug for ProcessWatch {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

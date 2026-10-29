@@ -119,6 +119,29 @@ pub struct RegistryHeader {
     pub hub_pid: u32,
 }
 
+impl RegistryHeader {
+    /// A copy of the header at the start of a mapping of `mapped` bytes,
+    /// checked for alignment and length but not yet validated.
+    ///
+    /// # Safety
+    ///
+    /// `base` must point to `mapped` readable bytes.
+    pub unsafe fn read_from(base: NonNull<u8>, mapped: u64) -> Result<Self, LayoutError> {
+        if base.as_ptr() as usize % BLOCK_ALIGN != 0 {
+            return Err(LayoutError::Misaligned);
+        }
+        if mapped < RegistryLayout::SLOTS_OFFSET {
+            return Err(LayoutError::Truncated {
+                needed: RegistryLayout::SLOTS_OFFSET,
+                available: mapped,
+            });
+        }
+        // SAFETY: aligned and long enough, as checked; any bytes are a valid
+        // header.
+        Ok(unsafe { base.cast::<Self>().read_volatile() })
+    }
+}
+
 /// The hub-wide fields that change while it runs.
 #[repr(C, align(64))]
 pub struct RegistryControl {

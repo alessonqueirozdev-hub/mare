@@ -1,0 +1,20 @@
+[package]
+name = "mare-hub"
+description = "MARÉ's hub: one cycle a period, clients woken with deadlines, their outputs mixed into the devices"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[dependencies]
+mare-protocol.workspace = true
+mare-sys.workspace = true
+
+[dev-dependencies]
+mare-client.workspace = true
+
+[lints]
+workspace = true

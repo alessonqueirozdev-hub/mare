@@ -1,0 +1,17 @@
+[package]
+name = "mare-client"
+description = "The client side of MARÉ: connect to a hub, map a segment, and run a cycle each period"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[dependencies]
+mare-protocol.workspace = true
+mare-sys.workspace = true
+
+[lints]
+workspace = true

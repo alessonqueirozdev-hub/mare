@@ -1,0 +1,32 @@
+# MARÉ
+
+**Multi-device Audio Realtime Exchange**: an open protocol, and a hub that
+implements it, for moving audio and MIDI between applications and audio
+devices with low latency.
+
+*Maré* is Portuguese for the tide. The mangrove lives by it, filling and
+emptying in cycles, as audio buffers do.
+
+MARÉ keeps what makes low-latency audio fast (applications write straight
+into the buffers the device plays, on the device's schedule) and adds what
+ASIO never had:
+
+- **many applications at once** on the same device, each with low latency;
+- **many devices as one**, with their clocks' drift corrected;
+- **hot-plug**: devices come and go while the session runs;
+- **MIDI 2.0 on the same clock** as the audio, to the sample;
+- **latency said exactly**, part by part, and measured;
+- **open**: MIT or Apache-2.0, a C layout any language can implement.
+
+It is part of the ecosystem of the
+[Manguebyte Audio Framework](https://github.com/alessonqueirozdev-hub/manguebyte),
+from Recife: every program built on Manguebyte will speak MARÉ.
+
+> **Status: design.** Nothing is built yet. [docs/DESIGN.md](docs/DESIGN.md)
+> is the specification the code will follow, including what MARÉ is not
+> (not a kernel driver, and not lower latency than the hardware allows).
+
+## Licence
+
+Licensed under either of [Apache License, Version 2.0](LICENSE-APACHE) or
+[MIT license](LICENSE-MIT) at your option.

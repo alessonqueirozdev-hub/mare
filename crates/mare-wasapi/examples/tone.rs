@@ -119,8 +119,15 @@ fn main() {
         })
     });
     let until = Instant::now() + Duration::from_secs_f64(seconds);
+    // The counters once the client has run a hundred cycles in time, so that
+    // what it misses while starting (its first cycle runs cold) is told
+    // apart from what it misses while playing.
+    let mut started = None;
     while Instant::now() < until && !running.has_stopped() {
-        std::thread::sleep(Duration::from_millis(50));
+        std::thread::sleep(Duration::from_millis(20));
+        if started.is_none() && running.stats().client_cycles >= 100 {
+            started = Some(running.stats());
+        }
     }
     println!("cycle thread promoted: {}", running.is_realtime());
     let (engine, error) = running.stop();
@@ -138,6 +145,15 @@ fn main() {
         stats.busy,
         stats.longest_wait_ns as f64 / 1e6
     );
+    match started {
+        Some(start) => println!(
+            "after its first 100 cycles: late {} times and busy {} in {} cycles",
+            stats.late - start.late,
+            stats.busy - start.busy,
+            stats.cycles - start.cycles
+        ),
+        None => println!("the client never ran 100 cycles in time"),
+    }
 }
 
 #[cfg(not(windows))]

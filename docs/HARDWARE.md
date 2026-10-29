@@ -19,6 +19,37 @@ reported. Add `--exclusive` for exclusive mode.
 
 ## Sessions
 
+### 2026-10-29: by hand, Realtek output of the development laptop
+
+With the person at the machine listening, through the laptop's own
+speakers, at a comfortable volume. Three steps, each started only once they
+said they were ready. (The same three had been run once before, by mistake,
+without anyone listening; those runs are not counted here.)
+
+1. Exclusive mode, silence (`tests/device.rs`, ignored test). The device
+   took 24-bit integer in 32-bit containers at 48 kHz, two channels, with a
+   period of 144 frames (3 ms); the buffer is one period and the driver
+   reports a stream latency of 144 frames. Over the measured 333 cycles
+   (0.99 s): nothing late, nothing busy, no heap calls. While the client was
+   starting, before the measurement: late once and busy 15 times, the
+   longest wait (2.45 ms) among them.
+2. A 440 Hz sine at −30 dBFS for 5 s, shared mode (`examples/tone.rs`):
+   32-bit float, period 480 frames (10 ms, the driver's minimum), buffer
+   1 056 frames. 478 cycles, every one finished in time, longest wait
+   0.25 ms. **Heard: clean, no clicks or gaps.**
+3. The same sine, exclusive mode: period 144 frames (3 ms). 1 596 cycles;
+   the client finished 1 548 in time, was late once and busy 47 times, and
+   the longest wait was 2.6 ms. **Heard: clean from start to end.** The 48
+   missed cycles (about 144 ms) went unheard, which fits them all falling
+   while the client started, before the tone began, as in step 1; the
+   example did not yet tell starting apart from playing, and now does.
+
+What it shows: the hub drives a real device in both modes, a client's
+sound reaches the speakers through shared memory, and at 3 ms periods the
+client keeps up once started. What it does not show: periods below 3 ms
+(this output offers none), sound through the UMC404HD, duplex, and anything
+measured with a loopback cable.
+
 ### 2026-10-29: automated silence, development laptop
 
 Not by hand: `crates/mare-wasapi/tests/device.rs`, which the test suite

@@ -250,3 +250,135 @@ fn the_hub_plays_silence_through_an_exclusive_device() {
         plays_silence(&endpoint, Mode::Exclusive);
     }
 }
+
+/// The input a duplex test may open, chosen like `test_endpoint` but among
+/// inputs, by `MARE_TEST_INPUT`.
+fn test_input() -> Option<Endpoint> {
+    let endpoints = mare_wasapi::capture_endpoints().ok()?;
+    let chosen = match std::env::var("MARE_TEST_INPUT") {
+        Ok(part) => {
+            let part = part.to_lowercase();
+            endpoints
+                .into_iter()
+                .find(|e| e.name.to_lowercase().contains(&part))
+        }
+        Err(_) => endpoints.into_iter().find(|e| e.is_default),
+    };
+    match chosen {
+        None => {
+            eprintln!("skipped: no audio input to test with");
+            None
+        }
+        Some(endpoint) if forbidden(&endpoint.name) => {
+            eprintln!("skipped: {} is never opened by a test", endpoint.name);
+            None
+        }
+        Some(endpoint) => Some(endpoint),
+    }
+}
+
+/// Opens an output and an input together in `mode`, runs the hub with a
+/// client that reads the input and writes silence for about two seconds,
+/// and checks that the input kept up with the output. What the input
+/// records is looked at only to check it is finite, and is kept nowhere.
+fn duplex(output: &Endpoint, input: &Endpoint, mode: Mode) {
+    let device = WasapiDevice::open_duplex(&output.id, &input.id, &OpenOptions::new(mode)).unwrap();
+    let config = device.config();
+    eprintln!(
+        "{} + {}: {:?}, out {:?}, in {:?}, {} Hz, {} in, {} out, {:?}",
+        device.name(),
+        device.input_name().unwrap(),
+        mode,
+        device.sample_format(),
+        device.input_sample_format().unwrap(),
+        config.sample_rate,
+        config.input_channels,
+        config.output_channels,
+        device.latency()
+    );
+    assert!(config.input_channels > 0);
+    let period = f64::from(config.period_frames) / f64::from(config.sample_rate);
+
+    let hub = unique_hub();
+    let (mut engine, mut keeper) = mare_hub::create(
+        &HubConfig::new(hub.clone()),
+        device,
+        Arc::new(SystemClock::new()) as Arc<dyn Clock>,
+    )
+    .unwrap();
+    let inputs = config.input_channels;
+    let client = std::thread::spawn(move || {
+        let mut client = Client::connect(&hub, &ClientConfig::new("listen", inputs, 2)).unwrap();
+        let mut finite = true;
+        let stopped = client.run(|cycle| {
+            for channel in 0..cycle.input_channels() {
+                finite &= cycle.input(channel).unwrap().iter().all(|x| x.is_finite());
+            }
+            for channel in 0..cycle.output_channels() {
+                cycle.output(channel).unwrap().fill(0.0);
+            }
+        });
+        (stopped, finite)
+    });
+    let start = Instant::now();
+    while engine.clients().count() == 0 {
+        keeper.poll();
+        engine.run_cycle().unwrap();
+        assert!(
+            start.elapsed() < Duration::from_secs(10),
+            "the client never connected"
+        );
+    }
+    let _promoted = mare_sys::promote_current_thread();
+    // Half a second for both streams and the client to settle.
+    for _ in 0..(0.5 / period) as u32 {
+        engine.run_cycle().unwrap();
+    }
+    let before = engine.device().input_stats().unwrap();
+    let hub_before = engine.stats();
+    let cycles = (2.0 / period) as u32;
+    let calls = heap_calls(|| {
+        for _ in 0..cycles {
+            engine.run_cycle().unwrap();
+        }
+    });
+    let after = engine.device().input_stats().unwrap();
+    let stats = engine.stats();
+    engine.shut_down();
+    drop(engine);
+    let (_, finite) = client.join().unwrap();
+
+    let frames = u64::from(cycles) * u64::from(config.period_frames);
+    let padded = after.padded - before.padded;
+    let dropped = after.dropped - before.dropped;
+    eprintln!(
+        "measured: {cycles} cycles, {frames} frames out; input delivered {}, padded {padded}, dropped {dropped}, discontinuities {}; client late {} busy {}",
+        after.frames_in - before.frames_in,
+        after.discontinuities - before.discontinuities,
+        stats.late - hub_before.late,
+        stats.busy - hub_before.busy,
+    );
+    assert_eq!(calls, 0, "the cycle allocated or freed {calls} times");
+    assert!(finite, "the client read something that is not a number");
+    // Over two seconds the input must deliver what the output plays, give or
+    // take a buffer at either end.
+    let slack = 2 * u64::from(config.max_frames);
+    assert!(padded <= slack, "padded {padded} of {frames}");
+    assert!(dropped <= slack, "dropped {dropped} of {frames}");
+}
+
+#[test]
+#[ignore = "opens a microphone; run by hand"]
+fn the_hub_reads_an_input_beside_a_shared_output() {
+    if let (Some(output), Some(input)) = (test_endpoint(), test_input()) {
+        duplex(&output, &input, Mode::Shared);
+    }
+}
+
+#[test]
+#[ignore = "opens a microphone and takes the devices from other programs; run by hand"]
+fn the_hub_reads_an_input_beside_an_exclusive_output() {
+    if let (Some(output), Some(input)) = (test_endpoint(), test_input()) {
+        duplex(&output, &input, Mode::Exclusive);
+    }
+}

@@ -15,8 +15,11 @@
 //! device's format. Nothing on that path allocates or locks. The stream
 //! starts on the first period, so on the cycle thread.
 //!
-//! The device is output only for now: capture comes with the duplex work
-//! listed in `docs/TECH_DEBT.md`.
+//! A device may also have an input: a capture endpoint opened beside the
+//! output ([`WasapiDevice::open_duplex`]), in the same mode and at the same
+//! sample rate. The output paces the cycles; the input packets are queued
+//! and handed to the hub a period at a time, with any padding or dropping
+//! counted (see [`fifo`]).
 //!
 //! Everything but [`format`] is Windows-only; elsewhere the crate is empty.
 
@@ -64,14 +67,15 @@ impl OpenOptions {
     }
 }
 
-/// A render endpoint the system knows of.
+/// An endpoint the system knows of, for output or for input.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Endpoint {
-    /// The endpoint's id, which [`WasapiDevice::open`] takes.
+    /// The endpoint id, which [`WasapiDevice::open`] and
+    /// [`WasapiDevice::open_duplex`] take.
     pub id: String,
     /// Its name, for people to read.
     pub name: String,
-    /// Whether it is the system's default output.
+    /// Whether it is the system default for its direction.
     pub is_default: bool,
 }
 
@@ -122,16 +126,34 @@ pub fn render_endpoints() -> Result<Vec<Endpoint>, WasapiError> {
     windows::render_endpoints()
 }
 
+/// The capture endpoints that are active now. Listing them opens none.
+#[cfg(windows)]
+pub fn capture_endpoints() -> Result<Vec<Endpoint>, WasapiError> {
+    windows::capture_endpoints()
+}
+
 #[cfg(windows)]
 impl WasapiDevice {
     /// Opens the render endpoint `id` (from [`render_endpoints`]).
     pub fn open(id: &str, options: &OpenOptions) -> Result<Self, WasapiError> {
-        windows::open(Some(id), options)
+        windows::open(Some(id), None, options)
+    }
+
+    /// Opens the render endpoint `output` with the capture endpoint `input`
+    /// beside it (from [`capture_endpoints`]), in the same mode and at the
+    /// same sample rate. The output paces the hub's cycles; each cycle takes
+    /// one period of what the input recorded (see [`fifo`]).
+    pub fn open_duplex(
+        output: &str,
+        input: &str,
+        options: &OpenOptions,
+    ) -> Result<Self, WasapiError> {
+        windows::open(Some(output), Some(input), options)
     }
 
     /// Opens the system's default render endpoint.
     pub fn open_default(options: &OpenOptions) -> Result<Self, WasapiError> {
-        windows::open(None, options)
+        windows::open(None, None, options)
     }
 }
 

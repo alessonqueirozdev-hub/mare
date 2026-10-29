@@ -6,11 +6,12 @@ use mare_hub::{AudioBlock, Device, DeviceConfig, DeviceError};
 use windows::Win32::Devices::FunctionDiscovery::PKEY_Device_FriendlyName;
 use windows::Win32::Foundation::{CloseHandle, HANDLE, WAIT_OBJECT_0};
 use windows::Win32::Media::Audio::{
-    AUDCLNT_BUFFERFLAGS_SILENT, AUDCLNT_E_BUFFER_SIZE_NOT_ALIGNED, AUDCLNT_E_DEVICE_INVALIDATED,
-    AUDCLNT_SHAREMODE_EXCLUSIVE, AUDCLNT_STREAMFLAGS_EVENTCALLBACK, DEVICE_STATE_ACTIVE,
+    AUDCLNT_BUFFERFLAGS_DATA_DISCONTINUITY, AUDCLNT_BUFFERFLAGS_SILENT,
+    AUDCLNT_E_BUFFER_SIZE_NOT_ALIGNED, AUDCLNT_E_DEVICE_INVALIDATED, AUDCLNT_SHAREMODE_EXCLUSIVE,
+    AUDCLNT_STREAMFLAGS_EVENTCALLBACK, DEVICE_STATE_ACTIVE, EDataFlow, IAudioCaptureClient,
     IAudioClient, IAudioClient3, IAudioRenderClient, IMMDevice, IMMDeviceEnumerator,
     MMDeviceEnumerator, WAVE_FORMAT_PCM, WAVEFORMATEX, WAVEFORMATEXTENSIBLE,
-    WAVEFORMATEXTENSIBLE_0, eConsole, eRender,
+    WAVEFORMATEXTENSIBLE_0, eCapture, eConsole, eRender,
 };
 use windows::Win32::Media::KernelStreaming::{KSDATAFORMAT_SUBTYPE_PCM, WAVE_FORMAT_EXTENSIBLE};
 use windows::Win32::Media::Multimedia::{KSDATAFORMAT_SUBTYPE_IEEE_FLOAT, WAVE_FORMAT_IEEE_FLOAT};
@@ -22,6 +23,7 @@ use windows::Win32::System::Com::{
 use windows::Win32::System::Threading::{CreateEventW, WaitForSingleObject};
 use windows::core::{HSTRING, PWSTR};
 
+use crate::fifo::{CaptureFifo, CaptureStats};
 use crate::format::{SampleFormat, interleave};
 use crate::{Endpoint, Latency, Mode, OpenOptions, WasapiError};
 
@@ -112,17 +114,25 @@ fn friendly_name(device: &IMMDevice) -> Result<String, WasapiError> {
 }
 
 pub(crate) fn render_endpoints() -> Result<Vec<Endpoint>, WasapiError> {
+    endpoints(eRender)
+}
+
+pub(crate) fn capture_endpoints() -> Result<Vec<Endpoint>, WasapiError> {
+    endpoints(eCapture)
+}
+
+fn endpoints(flow: EDataFlow) -> Result<Vec<Endpoint>, WasapiError> {
     let mta = Mta::enter()?;
     in_mta(&mta, || {
         let enumerator = enumerator()?;
         // SAFETY: plain calls on valid objects.
         unsafe {
             let default = enumerator
-                .GetDefaultAudioEndpoint(eRender, eConsole)
+                .GetDefaultAudioEndpoint(flow, eConsole)
                 .ok()
                 .and_then(|d| device_id(&d).ok());
             let collection = enumerator
-                .EnumAudioEndpoints(eRender, DEVICE_STATE_ACTIVE)
+                .EnumAudioEndpoints(flow, DEVICE_STATE_ACTIVE)
                 .map_err(os("listing devices"))?;
             let count = collection.GetCount().map_err(os("listing devices"))?;
             let mut endpoints = Vec::with_capacity(count as usize);
@@ -260,7 +270,8 @@ impl Drop for Event {
 
 /// A render endpoint opened for event-driven output.
 pub struct WasapiDevice {
-    // Drop order: the stream, then its event, then the apartment.
+    // Drop order: the streams, then their events, then the apartment.
+    input: Option<Input>,
     render: IAudioRenderClient,
     client: IAudioClient,
     event: Event,
@@ -440,8 +451,83 @@ fn open_exclusive(device: &IMMDevice, options: &OpenOptions) -> Result<Stream, W
     }
 }
 
+/// A capture stream opened beside the output, in the same mode, at the same
+/// sample rate, with a period as close to the output's as it allows.
+struct Input {
+    capture: IAudioCaptureClient,
+    client: IAudioClient,
+    _event: Event,
+    name: String,
+    id: String,
+    sample: SampleFormat,
+    channels: usize,
+    buffer_frames: u32,
+    fifo: CaptureFifo,
+}
+
+fn open_input(
+    enumerator: &IMMDeviceEnumerator,
+    id: &str,
+    options: &OpenOptions,
+    rate: u32,
+    period: u32,
+) -> Result<Input, WasapiError> {
+    // SAFETY: plain call on a valid object.
+    let device =
+        unsafe { enumerator.GetDevice(&HSTRING::from(id)) }.map_err(|_| WasapiError::NoDevice)?;
+    let name = friendly_name(&device).unwrap_or_default();
+    let id = device_id(&device)?;
+    let wanted = OpenOptions {
+        mode: options.mode,
+        period_frames: Some(period),
+        sample_rate: Some(rate),
+    };
+    let stream = match options.mode {
+        Mode::Shared => open_shared(&device, &wanted)?,
+        Mode::Exclusive => open_exclusive(&device, &wanted)?,
+    };
+    if stream.rate != rate {
+        return Err(WasapiError::Unsupported(
+            "an input at another sample rate than the output",
+        ));
+    }
+    let event = Event::new()?;
+    // SAFETY: plain calls on the initialised client.
+    unsafe {
+        let client = &stream.client;
+        // Event-driven streams need an event, though the hub never waits on
+        // this one: the output paces the cycle, and the input is drained.
+        client
+            .SetEventHandle(event.0)
+            .map_err(os("setting the input event"))?;
+        let buffer = client
+            .GetBufferSize()
+            .map_err(os("reading the input buffer size"))?;
+        if buffer > mare_hub::MAX_FRAMES {
+            return Err(WasapiError::Unsupported("a buffer longer than 8192 frames"));
+        }
+        let capture: IAudioCaptureClient = client
+            .GetService()
+            .map_err(os("getting the capture client"))?;
+        let channels = stream.channels as usize;
+        Ok(Input {
+            capture,
+            client: stream.client.clone(),
+            _event: event,
+            name,
+            id,
+            sample: stream.sample,
+            channels,
+            buffer_frames: buffer,
+            // Sized in `open`, once the output buffer is known.
+            fifo: CaptureFifo::new(channels, 1, 1),
+        })
+    }
+}
+
 pub(crate) fn open(
     endpoint: Option<&str>,
+    input: Option<&str>,
     options: &OpenOptions,
 ) -> Result<WasapiDevice, WasapiError> {
     let mta = Mta::enter()?;
@@ -460,6 +546,16 @@ pub(crate) fn open(
         let stream = match options.mode {
             Mode::Shared => open_shared(&device, options)?,
             Mode::Exclusive => open_exclusive(&device, options)?,
+        };
+        let input = match input {
+            Some(id) => Some(open_input(
+                &enumerator,
+                id,
+                options,
+                stream.rate,
+                stream.period_frames,
+            )?),
+            None => None,
         };
         let event = Event::new()?;
         // SAFETY: plain calls on the initialised client.
@@ -489,7 +585,16 @@ pub(crate) fn open(
                     .ReleaseBuffer(buffer, AUDCLNT_BUFFERFLAGS_SILENT.0 as u32)
                     .map_err(os("filling the first period"))?;
             }
+            let input = input.map(|mut input| {
+                // A cycle takes the output period; the backlog may hold up to
+                // two of the larger of the two buffers.
+                let backlog = 2 * buffer.max(input.buffer_frames) as usize;
+                input.fifo =
+                    CaptureFifo::new(input.channels, stream.period_frames as usize, backlog);
+                input
+            });
             Ok(Opened {
+                input,
                 render,
                 client: stream.client.clone(),
                 event,
@@ -505,6 +610,7 @@ pub(crate) fn open(
         }
     })?;
     Ok(WasapiDevice {
+        input: opened.input,
         render: opened.render,
         client: opened.client,
         event: opened.event,
@@ -525,6 +631,7 @@ pub(crate) fn open(
 
 /// What the COM thread hands back.
 struct Opened {
+    input: Option<Input>,
     render: IAudioRenderClient,
     client: IAudioClient,
     event: Event,
@@ -571,6 +678,27 @@ impl WasapiDevice {
         self.sample
     }
 
+    /// The input name, if the device was opened with one.
+    pub fn input_name(&self) -> Option<&str> {
+        self.input.as_ref().map(|input| input.name.as_str())
+    }
+
+    /// The input endpoint id, if the device was opened with one.
+    pub fn input_id(&self) -> Option<&str> {
+        self.input.as_ref().map(|input| input.id.as_str())
+    }
+
+    /// The format of the input buffer, if there is an input.
+    pub fn input_sample_format(&self) -> Option<SampleFormat> {
+        self.input.as_ref().map(|input| input.sample)
+    }
+
+    /// What the input has delivered, and the corrections made to keep it in
+    /// step with the output, if there is an input.
+    pub fn input_stats(&self) -> Option<CaptureStats> {
+        self.input.as_ref().map(|input| input.fifo.stats())
+    }
+
     /// What the device's latency is made of, as WASAPI reports it.
     pub fn latency(&self) -> Latency {
         Latency {
@@ -587,13 +715,17 @@ impl Device for WasapiDevice {
             sample_rate: self.sample_rate,
             period_frames: self.period_frames,
             max_frames: self.buffer_frames.max(self.period_frames),
-            input_channels: 0,
+            input_channels: self.input.as_ref().map_or(0, |input| input.channels as u32),
             output_channels: self.channels as u32,
         }
     }
 
     fn wait_period(&mut self) -> Result<usize, DeviceError> {
         if !self.started {
+            if let Some(input) = &self.input {
+                // SAFETY: the client is initialised and not started.
+                unsafe { input.client.Start() }.map_err(device_error)?;
+            }
             // SAFETY: the client is initialised and not started.
             unsafe { self.client.Start() }.map_err(device_error)?;
             self.started = true;
@@ -622,7 +754,41 @@ impl Device for WasapiDevice {
         }
     }
 
-    fn read(&mut self, _inputs: &mut AudioBlock<'_>) -> Result<(), DeviceError> {
+    fn read(&mut self, inputs: &mut AudioBlock<'_>) -> Result<(), DeviceError> {
+        let Some(input) = self.input.as_mut() else {
+            return Ok(());
+        };
+        let frame_bytes = input.channels * input.sample.bytes();
+        // Take every packet the input has, then one period from the queue.
+        loop {
+            // SAFETY: the client is running.
+            let next = unsafe { input.capture.GetNextPacketSize() }.map_err(device_error)?;
+            if next == 0 {
+                break;
+            }
+            let mut data = std::ptr::null_mut();
+            let mut frames = 0u32;
+            let mut flags = 0u32;
+            // SAFETY: on success `data` points to `frames` frames of the
+            // input format, ours until `ReleaseBuffer`.
+            unsafe {
+                input
+                    .capture
+                    .GetBuffer(&mut data, &mut frames, &mut flags, None, None)
+                    .map_err(device_error)?;
+                if flags & AUDCLNT_BUFFERFLAGS_DATA_DISCONTINUITY.0 as u32 != 0 {
+                    input.fifo.note_discontinuity();
+                }
+                if flags & AUDCLNT_BUFFERFLAGS_SILENT.0 as u32 != 0 || data.is_null() {
+                    input.fifo.push_silence(frames as usize);
+                } else {
+                    let bytes = std::slice::from_raw_parts(data, frames as usize * frame_bytes);
+                    input.fifo.push(bytes, input.sample, frames as usize);
+                }
+                input.capture.ReleaseBuffer(frames).map_err(device_error)?;
+            }
+        }
+        input.fifo.pop(inputs);
         Ok(())
     }
 
@@ -647,8 +813,13 @@ impl Device for WasapiDevice {
 impl Drop for WasapiDevice {
     fn drop(&mut self) {
         if self.started {
-            // SAFETY: the client is running.
-            let _ = unsafe { self.client.Stop() };
+            // SAFETY: the clients are running.
+            unsafe {
+                let _ = self.client.Stop();
+                if let Some(input) = &self.input {
+                    let _ = input.client.Stop();
+                }
+            }
         }
     }
 }

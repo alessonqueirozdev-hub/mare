@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/mare-logo.png" alt="MARÉ logo: a wave of sand and steel with circuits inside, in the Manguebyte ecosystem's orange, ringed by a laptop, a phone and a tablet showing sound waves" width="360">
+</p>
+
 # MARÉ
 
 **Multi-device Audio Realtime Exchange**: an open protocol, and a hub that

@@ -195,6 +195,7 @@ fn plays_silence(endpoint: &Endpoint, mode: Mode) {
     }
 
     let cycles = (Duration::from_secs(1).as_secs_f64() / period.as_secs_f64()) as u32;
+    let before = engine.stats();
     let started = Instant::now();
     let mut frames = 0usize;
     let calls = heap_calls(|| {
@@ -205,7 +206,15 @@ fn plays_silence(endpoint: &Endpoint, mode: Mode) {
     });
     let took = started.elapsed();
     let stats = engine.stats();
-    eprintln!("{cycles} cycles, {frames} frames in {took:?}: {stats:?}");
+    eprintln!(
+        "measured: {cycles} cycles, {frames} frames in {took:?}; the client was late {} and busy {} times in them",
+        stats.late - before.late,
+        stats.busy - before.busy
+    );
+    eprintln!(
+        "before: {before:?}
+after: {stats:?}"
+    );
     engine.shut_down();
     drop(engine);
     client.join().unwrap();

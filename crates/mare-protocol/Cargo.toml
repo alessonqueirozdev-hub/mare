@@ -1,0 +1,13 @@
+[package]
+name = "mare-protocol"
+description = "MARÉ's shared-memory layout: the registry, the client segment, the control block and the UMP event rings"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[lints]
+workspace = true

@@ -1,0 +1,32 @@
+[workspace]
+resolver = "3"
+members = ["crates/*"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+license = "MIT OR Apache-2.0"
+authors = ["Alesson Queiroz", "The MARÉ contributors"]
+keywords = ["audio", "midi", "realtime", "low-latency", "ipc"]
+categories = ["multimedia::audio"]
+
+[workspace.dependencies]
+mare-protocol = { path = "crates/mare-protocol", version = "0.1.0" }
+mare-sys = { path = "crates/mare-sys", version = "0.1.0" }
+mare-client = { path = "crates/mare-client", version = "0.1.0" }
+mare-hub = { path = "crates/mare-hub", version = "0.1.0" }
+windows-sys = "0.61"
+libc = "0.2"
+
+[workspace.lints.rust]
+missing_docs = "warn"
+unsafe_op_in_unsafe_fn = "deny"
+
+[workspace.lints.clippy]
+undocumented_unsafe_blocks = "warn"
+
+# The development machine is short of disk space: no debug information in
+# development builds keeps the target directory small.
+[profile.dev]
+debug = 0

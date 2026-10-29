@@ -17,6 +17,15 @@ break the protocol and the API.
   event and hands it each period's mix, converted to the device's format,
   without allocating. `render_endpoints` lists outputs without opening them;
   `Latency` gives the period, the buffer and the driver's stream latency.
+- Duplex: `WasapiDevice::open_duplex` opens a capture endpoint beside the
+  output, in the same mode and at the same sample rate, and
+  `capture_endpoints` lists inputs. The output paces the cycle; each cycle
+  takes the input's packets into a `fifo::CaptureFifo` and hands the hub
+  one period. The queue starts with a period of cushion, places packets by
+  their position on the device's clock (in exclusive mode the Realtek input
+  hands every packet over twice; repeats are left out, gaps become
+  silence), and keeps its backlog bounded, counting every correction.
+  `examples/meter.rs` prints an input's level as a client reads it.
 - `format`: conversion between the hub's floats and 32-bit float, 16-bit,
   24-bit (packed or in 32) and 32-bit integer, clamped, NaN as silence, a
   round trip within half a step.

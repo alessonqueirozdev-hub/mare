@@ -10,7 +10,7 @@ from Recife.
 
 Status: milestone 2 is built (the shared-memory layout, the client library,
 and a hub tested against fake devices), and milestone 3 is under way (a
-WASAPI output device, run in shared mode on one device so far); the rest is
+WASAPI device, output and duplex input, run by hand on one device so far); the rest is
 design. This document is
 the specification the code follows, and it changes as the code proves or
 disproves it. Where the code has changed it, the text says so. The layout
@@ -245,9 +245,10 @@ As in Manguebyte, nothing is claimed before its test exists.
 2. The shared-memory layout and the client library, tested against a hub
    with fake devices (built).
 3. The hub on Windows with one device (WASAPI), one client, then many
-   (under way: output in exclusive and shared mode is built; shared mode has
-   played silence on one device; capture and the hand-run sessions of
-   [HARDWARE.md](HARDWARE.md) are next).
+   (under way: output and duplex input, in exclusive and shared mode, are
+   built and have run by hand on the laptop's Realtek device, recorded in
+   [HARDWARE.md](HARDWARE.md); the UMC404HD and a loopback measurement of
+   latency are next).
 4. Several devices with drift correction; hot-plug.
 5. MIDI 2.0 on the same clock.
 6. The Manguebyte backend.

@@ -1,0 +1,137 @@
+//! Shared memory, doorbells and process watches, on the system the tests run
+//! on.
+
+use std::io;
+use std::ptr::NonNull;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicU32, AtomicUsize, Ordering};
+use std::time::{Duration, Instant};
+
+use mare_sys::{Doorbell, HubName, ProcessWatch, SharedMemory, Waiter, current_pid};
+
+/// A hub name no other test, and no other run, uses at the same time.
+fn unique_hub() -> HubName {
+    static NEXT: AtomicUsize = AtomicUsize::new(0);
+    let n = NEXT.fetch_add(1, Ordering::Relaxed);
+    HubName::new(&format!("s{:x}-{n}", current_pid() & 0xF_FFFF)).unwrap()
+}
+
+#[test]
+fn both_mappings_see_the_same_bytes() {
+    let name = unique_hub().registry();
+    let a = SharedMemory::create(&name, 4096).unwrap();
+    let b = SharedMemory::open(&name).unwrap();
+    assert!(a.len() >= 4096 && b.len() >= 4096);
+    assert_eq!(a.base().as_ptr() as usize % 64, 0);
+    // SAFETY: both mappings are 4096 bytes or more and live to the end.
+    unsafe {
+        assert_eq!(*b.base().as_ptr().add(100), 0, "zero-filled");
+        a.base().as_ptr().add(100).write(42);
+        assert_eq!(*b.base().as_ptr().add(100), 42);
+        b.base().as_ptr().add(4095).write(7);
+        assert_eq!(*a.base().as_ptr().add(4095), 7);
+    }
+}
+
+#[test]
+fn a_name_is_created_once_and_must_exist_to_open() {
+    let name = unique_hub().registry();
+    let first = SharedMemory::create(&name, 64).unwrap();
+    let again = SharedMemory::create(&name, 64).unwrap_err();
+    assert_eq!(again.kind(), io::ErrorKind::AlreadyExists);
+    drop(first);
+    let missing = unique_hub().registry();
+    assert!(SharedMemory::open(&missing).is_err());
+}
+
+#[test]
+fn an_unlinked_name_cannot_be_opened_but_the_mapping_stays() {
+    let name = unique_hub().registry();
+    let memory = SharedMemory::create(&name, 64).unwrap();
+    SharedMemory::unlink(&name).unwrap();
+    if cfg!(not(windows)) {
+        assert!(SharedMemory::open(&name).is_err());
+    }
+    // SAFETY: the mapping is still there.
+    unsafe { memory.base().as_ptr().write(1) };
+}
+
+/// A doorbell's counter in its own shared memory, and both ends of it.
+fn doorbell_pair() -> (SharedMemory, Doorbell, Doorbell) {
+    let hub = unique_hub();
+    let memory = SharedMemory::create(&hub.registry(), 64).unwrap();
+    let word = memory.base().cast::<AtomicU32>();
+    // SAFETY: the memory outlives both doorbells in every test.
+    let (owner, other) = unsafe {
+        let owner = Doorbell::create(word, &hub.hub_wake()).unwrap();
+        let other = Doorbell::open(NonNull::from(word.as_ref()), &hub.hub_wake()).unwrap();
+        (owner, other)
+    };
+    (memory, owner, other)
+}
+
+#[test]
+fn a_ring_from_another_thread_ends_the_wait() {
+    let (_memory, owner, other) = doorbell_pair();
+    let other = Arc::new(other);
+    let mut waiter = Waiter::precise().unwrap();
+    for _ in 0..50 {
+        let seen = owner.seen();
+        let ringer = Arc::clone(&other);
+        let thread = std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_micros(200));
+            ringer.ring();
+        });
+        assert!(owner.wait(&mut waiter, seen, Duration::from_secs(5)));
+        assert_eq!(owner.seen(), seen.wrapping_add(1));
+        thread.join().unwrap();
+    }
+}
+
+#[test]
+fn a_ring_before_the_wait_is_not_lost() {
+    let (_memory, owner, other) = doorbell_pair();
+    let mut waiter = Waiter::coarse();
+    let seen = owner.seen();
+    other.ring();
+    let start = Instant::now();
+    assert!(owner.wait(&mut waiter, seen, Duration::from_secs(5)));
+    assert!(start.elapsed() < Duration::from_secs(1));
+}
+
+#[test]
+fn a_precise_wait_times_out_on_time() {
+    let (_memory, owner, _other) = doorbell_pair();
+    let mut waiter = Waiter::precise().unwrap();
+    let mut took = Vec::new();
+    for _ in 0..21 {
+        let seen = owner.seen();
+        let start = Instant::now();
+        assert!(!owner.wait(&mut waiter, seen, Duration::from_micros(500)));
+        took.push(start.elapsed());
+    }
+    took.sort();
+    assert!(took[0] >= Duration::from_micros(500));
+    // Generous bounds, for loaded CI machines; on an idle machine the median
+    // is a few tens of microseconds over. A wait counted in whole
+    // milliseconds (or in 15.6 ms scheduler ticks) would fail the median.
+    let median = took[took.len() / 2];
+    assert!(median < Duration::from_millis(3), "median wait {median:?}");
+    assert!(took[took.len() - 1] < Duration::from_millis(50), "{took:?}");
+}
+
+#[test]
+fn a_process_is_seen_to_end() {
+    let me = ProcessWatch::open(current_pid()).unwrap();
+    assert!(!me.has_exited());
+
+    // The test binary itself, asked only to list its tests, exits at once.
+    let mut child = std::process::Command::new(std::env::current_exe().unwrap())
+        .arg("--list")
+        .stdout(std::process::Stdio::null())
+        .spawn()
+        .unwrap();
+    let watch = ProcessWatch::open(child.id()).unwrap();
+    child.wait().unwrap();
+    assert!(watch.has_exited());
+}

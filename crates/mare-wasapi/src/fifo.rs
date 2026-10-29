@@ -47,13 +47,13 @@ pub struct CaptureStats {
     /// (it lost some).
     pub discontinuities: u64,
     /// Packets whose position on the device's clock was not where the one
-    /// before ended.
+    /// before ended (for packets pushed with their position).
     pub position_jumps: u64,
     /// Frames of packets that started before the previous one ended: the
-    /// same stretch of recording delivered again.
+    /// same stretch of recording delivered again, and left out.
     pub repeated_frames: u64,
     /// Frames between the end of a packet and the start of the next: a
-    /// stretch of recording never delivered.
+    /// stretch of recording never delivered, queued as silence.
     pub skipped_frames: u64,
     /// The largest packet, in frames.
     pub largest_packet: u64,
@@ -164,22 +164,52 @@ impl CaptureFifo {
         }
     }
 
-    /// Checks a packet's position on the device's clock (its first frame's,
-    /// in frames) against where the previous packet ended, counting jumps.
-    /// Call it for every packet, in order, before pushing it.
-    pub fn note_position(&mut self, position: u64, frames: usize) {
+    /// Places a packet at `position` on the device's clock (its first
+    /// frame's, in frames) against where the previous packet ended, and
+    /// returns how many of its first frames were delivered already and must
+    /// be left out. A stretch never delivered is queued as silence, so that
+    /// what follows stays in time. Jumps either way are counted.
+    fn align(&mut self, position: u64, frames: usize) -> usize {
+        self.stats.largest_packet = self.stats.largest_packet.max(frames as u64);
+        let mut repeated = 0;
         if let Some(expected) = self.next_position {
-            if position != expected {
+            if position < expected {
                 self.stats.position_jumps += 1;
-                if position < expected {
-                    self.stats.repeated_frames += expected - position;
-                } else {
-                    self.stats.skipped_frames += position - expected;
-                }
+                let overlap = (expected - position).min(frames as u64);
+                self.stats.repeated_frames += overlap;
+                repeated = overlap as usize;
+            } else if position > expected {
+                self.stats.position_jumps += 1;
+                let gap = position - expected;
+                self.stats.skipped_frames += gap;
+                // A gap longer than the queue would only be cut again.
+                self.push_silence(gap.min(self.capacity as u64) as usize);
             }
         }
-        self.next_position = Some(position + frames as u64);
-        self.stats.largest_packet = self.stats.largest_packet.max(frames as u64);
+        let end = position + frames as u64;
+        self.next_position = Some(self.next_position.map_or(end, |next| next.max(end)));
+        repeated
+    }
+
+    /// Adds a packet of `frames` frames of interleaved samples in `format`,
+    /// recorded at `position` on the device's clock: what it repeats of
+    /// earlier packets is left out, and what was skipped before it is
+    /// silence.
+    ///
+    /// # Panics
+    ///
+    /// If `bytes` is shorter than the frames need.
+    pub fn push_at(&mut self, position: u64, bytes: &[u8], format: SampleFormat, frames: usize) {
+        let skip = self.align(position, frames);
+        let stride = format.bytes() * self.channels;
+        self.push(&bytes[skip * stride..], format, frames - skip);
+    }
+
+    /// Adds a packet of `frames` frames of silence recorded at `position`,
+    /// placed as [`CaptureFifo::push_at`] places packets.
+    pub fn push_silence_at(&mut self, position: u64, frames: usize) {
+        let skip = self.align(position, frames);
+        self.push_silence(frames - skip);
     }
 
     /// Counts a packet that does not follow on from the one before.

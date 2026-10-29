@@ -796,15 +796,18 @@ impl Device for WasapiDevice {
                         None,
                     )
                     .map_err(device_error)?;
-                input.fifo.note_position(position, frames as usize);
                 if flags & AUDCLNT_BUFFERFLAGS_DATA_DISCONTINUITY.0 as u32 != 0 {
                     input.fifo.note_discontinuity();
                 }
                 if flags & AUDCLNT_BUFFERFLAGS_SILENT.0 as u32 != 0 || data.is_null() {
-                    input.fifo.push_silence(frames as usize);
+                    input.fifo.push_silence_at(position, frames as usize);
                 } else {
                     let bytes = std::slice::from_raw_parts(data, frames as usize * frame_bytes);
-                    input.fifo.push(bytes, input.sample, frames as usize);
+                    // Positioned, because in exclusive mode the system may
+                    // hand a packet that was already read over again.
+                    input
+                        .fifo
+                        .push_at(position, bytes, input.sample, frames as usize);
                 }
                 input.capture.ReleaseBuffer(frames).map_err(device_error)?;
             }

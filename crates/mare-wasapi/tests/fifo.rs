@@ -149,17 +149,53 @@ fn a_cushion_absorbs_packets_that_come_a_moment_late() {
 }
 
 #[test]
-fn packet_positions_that_repeat_or_skip_are_counted() {
-    let mut fifo = CaptureFifo::new(2, 4, 8);
-    fifo.note_position(1000, 4);
-    fifo.note_position(1004, 4); // follows on
-    fifo.note_position(1004, 4); // the same four frames again
-    fifo.note_position(1010, 6); // two frames never delivered
+fn a_packet_delivered_again_is_left_out_and_a_gap_is_silence() {
+    // Frame `n` of the recording is at device position 1000 + n.
+    let mut fifo = CaptureFifo::new(2, 4, 16);
+    fifo.push_at(1000, &packet(0, 4), SampleFormat::F32, 4);
+    fifo.push_at(1004, &packet(4, 4), SampleFormat::F32, 4); // follows on
+    fifo.push_at(1004, &packet(4, 4), SampleFormat::F32, 4); // the same again
+    fifo.push_at(1006, &packet(6, 4), SampleFormat::F32, 4); // half again
+    fifo.push_at(1012, &packet(12, 4), SampleFormat::F32, 4); // 10 and 11 lost
+    let (a, _) = cycle(&mut fifo, 4);
+    let (b, _) = cycle(&mut fifo, 4);
+    let (c, _) = cycle(&mut fifo, 4);
+    let (d, _) = cycle(&mut fifo, 4);
+    assert_eq!(a, [0.0, 1.0, 2.0, 3.0]);
+    assert_eq!(b, [4.0, 5.0, 6.0, 7.0]);
+    assert_eq!(
+        c,
+        [8.0, 9.0, 0.0, 0.0],
+        "the lost frames are silence, in place"
+    );
+    assert_eq!(d, [12.0, 13.0, 14.0, 15.0]);
     let stats = fifo.stats();
-    assert_eq!(stats.position_jumps, 2);
-    assert_eq!(stats.repeated_frames, 4);
+    assert_eq!(stats.position_jumps, 3);
+    assert_eq!(stats.repeated_frames, 4 + 2);
     assert_eq!(stats.skipped_frames, 2);
-    assert_eq!(stats.largest_packet, 6);
+    assert_eq!(stats.largest_packet, 4);
+}
+
+#[test]
+fn a_repeat_every_cycle_delivers_each_frame_once() {
+    // As the Realtek input did in exclusive mode: each packet once, then
+    // the same packet again.
+    let mut fifo = CaptureFifo::new(2, 4, 8);
+    fifo.prime(4);
+    let mut out = Vec::new();
+    for n in 0..100u32 {
+        let packet = packet(4 * n, 4);
+        fifo.push_at(u64::from(4 * n), &packet, SampleFormat::F32, 4);
+        fifo.push_at(u64::from(4 * n), &packet, SampleFormat::F32, 4);
+        out.extend(cycle(&mut fifo, 4).0);
+    }
+    let expected: Vec<f32> = (0..4)
+        .map(|_| 0.0)
+        .chain((0..396).map(|n| n as f32))
+        .collect();
+    assert_eq!(out, expected);
+    assert_eq!(fifo.stats().dropped, 0);
+    assert_eq!(fifo.stats().repeated_frames, 400);
 }
 
 #[test]

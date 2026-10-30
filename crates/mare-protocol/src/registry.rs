@@ -150,9 +150,11 @@ pub struct RegistryControl {
     _pad0: [u8; 4],
     /// The last cycle the hub started.
     pub cycle: AtomicU64,
-    _pad1: [u8; 48],
-    /// The hub's doorbell: a client adds one when it finishes a cycle or
-    /// changes its slot's state.
+    /// The housekeeper's doorbell: a client adds one when it asks to be
+    /// adopted or leaves (layout 0.2; zero and unused before).
+    pub keeper_bell: AtomicU32,
+    _pad1: [u8; 44],
+    /// The hub's doorbell: a client adds one when it finishes a cycle.
     pub hub_bell: AtomicU32,
     _pad2: [u8; 60],
 }

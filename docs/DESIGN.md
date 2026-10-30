@@ -109,7 +109,9 @@ the cycles on the real-time thread and never allocates, frees or locks. The
 lets go of those that leave or die. Each client's resources belong to one
 half at a time, handed over with an atomic phase; the engine lets go of a
 client at the start of a cycle, and only then does the housekeeper free it,
-so freeing never happens on the real-time thread.
+so freeing never happens on the real-time thread. The housekeeper sleeps on a doorbell
+of its own, which clients ring when they connect or leave and the engine
+rings when it lets a client go.
 
 ### The clock
 

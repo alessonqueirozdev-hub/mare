@@ -1,6 +1,6 @@
 # MARÉ: the shared-memory layout
 
-This is the byte-level layout of layout version 0.1, as `mare-protocol`
+This is the byte-level layout of layout version 0.2, as `mare-protocol`
 implements it in Rust and [`include/mare.h`](../include/mare.h) in C.
 `crates/mare-protocol/tests/layout.rs` checks the Rust structures against
 these tables, and reads and writes segments through these offsets alone, as
@@ -37,7 +37,7 @@ Header:
 |---|---|---|
 | 0 | `u8[8]` | magic, `MAREHUB\0` |
 | 8 | `u16` | version major (0) |
-| 10 | `u16` | version minor (1) |
+| 10 | `u16` | version minor (2) |
 | 12 | `u32` | header size (64) |
 | 16 | `u64` | registry size |
 | 24 | `u64` | control offset (64) |
@@ -55,7 +55,8 @@ Control:
 |---|---|---|
 | 0 | atomic `u32` | hub state: 0 starting, 1 running, 2 stopped |
 | 8 | atomic `u64` | the last cycle the hub started |
-| 64 | atomic `u32` | the hub's doorbell |
+| 16 | atomic `u32` | the housekeeper's doorbell (since 0.2) |
+| 64 | atomic `u32` | the hub's doorbell (cycles finished) |
 
 A client reads the hub state first, and trusts the header only once it is 1.
 
@@ -72,7 +73,9 @@ Slot:
 | 32 | atomic `u64` | cycles missed | hub |
 
 Slot states: 0 free, 1 claimed, 2 requested, 3 accepted, 4 rejected,
-5 leaving. A client takes a free slot by compare-and-swap to claimed, creates
+5 leaving. A client rings the housekeeper's doorbell (adds one, and on Windows
+signals the event `Local\mare.<hub>.keeper`) after storing requested or
+leaving, so the hub adopts or frees it at once. A client takes a free slot by compare-and-swap to claimed, creates
 its segment, stores its process id and segment size, and stores requested.
 The hub answers accepted or rejected. A client that leaves stores leaving.
 The hub frees a slot (adds one to its generation, then stores free) after a
@@ -110,7 +113,7 @@ Header:
 |---|---|---|
 | 0 | `u8[8]` | magic, `MARESEG\0` |
 | 8 | `u16` | version major (0) |
-| 10 | `u16` | version minor (1) |
+| 10 | `u16` | version minor (2) |
 | 12 | `u32` | header size (192) |
 | 16 | `u64` | segment size |
 | 24 | `u64` | control offset (192) |

@@ -156,6 +156,7 @@ pub(crate) struct Shared {
     // Drop order: everything that points into the registry goes before it.
     pub(crate) slots: Box<[HubSlot]>,
     pub(crate) hub_bell: Doorbell,
+    pub(crate) keeper_bell: Doorbell,
     pub(crate) view: RegistryView,
     pub(crate) header: RegistryHeader,
     pub(crate) name: HubName,

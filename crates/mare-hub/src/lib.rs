@@ -62,6 +62,10 @@ pub struct HubConfig {
     /// cycle; the rest is the hub's, to mix and hand the result to the
     /// device.
     pub client_budget: f64,
+    /// How long the housekeeping thread of [`start`] sleeps when no client
+    /// rings it. Clients ring it when they connect or leave; the interval
+    /// bounds how late a client whose process ended is noticed.
+    pub housekeeping_interval: Duration,
 }
 
 impl HubConfig {
@@ -72,6 +76,7 @@ impl HubConfig {
             name,
             max_clients: 64,
             client_budget: 0.7,
+            housekeeping_interval: Duration::from_millis(20),
         }
     }
 }
@@ -183,9 +188,17 @@ pub fn create<D: Device>(
             &config.name.hub_wake(),
         )
     }?;
+    // SAFETY: as above.
+    let keeper_bell = unsafe {
+        Doorbell::create(
+            std::ptr::NonNull::from(&view.control().keeper_bell),
+            &config.name.keeper_wake(),
+        )
+    }?;
     let shared = Arc::new(Shared {
         slots: (0..config.max_clients).map(|_| HubSlot::new()).collect(),
         hub_bell,
+        keeper_bell,
         view,
         header,
         name: config.name.clone(),
@@ -204,9 +217,6 @@ pub fn create<D: Device>(
         .store(hub_state::RUNNING, Ordering::Release);
     Ok((engine, keeper))
 }
-
-/// How often the housekeeping thread looks at the registry.
-const HOUSEKEEPING_INTERVAL: Duration = Duration::from_millis(2);
 
 /// A hub running on its own threads.
 pub struct RunningHub<D: Device> {
@@ -253,12 +263,13 @@ pub fn start<D: Device + 'static>(
             (engine, None)
         })?;
     let keeper_stop = Arc::clone(&stop);
+    let interval = config.housekeeping_interval;
     let keeper = std::thread::Builder::new()
         .name("mare-housekeeping".into())
         .spawn(move || {
             while !keeper_stop.load(Ordering::Acquire) {
                 keeper.poll();
-                std::thread::sleep(HOUSEKEEPING_INTERVAL);
+                keeper.wait(interval);
             }
             keeper
         })?;
@@ -294,6 +305,7 @@ impl<D: Device> RunningHub<D> {
     /// has stopped.
     pub fn stop(mut self) -> (Engine<D>, Option<DeviceError>) {
         self.stop.store(true, Ordering::Release);
+        self.shared.keeper_bell.ring();
         let (engine, error) = self
             .engine
             .take()
@@ -311,6 +323,7 @@ impl<D: Device> RunningHub<D> {
 impl<D: Device> Drop for RunningHub<D> {
     fn drop(&mut self) {
         self.stop.store(true, Ordering::Release);
+        self.shared.keeper_bell.ring();
         if let Some(engine) = self.engine.take() {
             let _ = engine.join();
         }

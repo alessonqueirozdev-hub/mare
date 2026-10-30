@@ -58,6 +58,10 @@ break the protocol and the API.
 
 ### Protocol (`mare-protocol`)
 
+- Layout 0.2: the registry's control block gives the housekeeper a
+  doorbell of its own (`keeper_bell`, offset 16, reserved in 0.1), which a
+  client rings when it asks to be adopted or leaves.
+
 - `include/mare.h`: the layout in C (C11 or C++11), with the structures,
   the constants, a layout computation and static checks of every size and
   offset. A test compiles and runs a C program with it and compares its
@@ -114,6 +118,10 @@ break the protocol and the API.
   events, write outputs and events, mark the cycle done, ring the hub.
 
 ### Hub (`mare-hub`)
+
+- The housekeeper sleeps on its doorbell instead of looking at the
+  registry every 2 ms; `HubConfig::housekeeping_interval` (20 ms) bounds
+  its sleep. The engine rings it when it lets a client go.
 
 - The hub reads each sample of a client's outputs with a volatile read, so
   a client that writes after marking a cycle done can only spoil the mix,

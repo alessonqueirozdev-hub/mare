@@ -172,6 +172,7 @@ pub struct Client {
     events_out: Option<RingProducer>,
     go: Doorbell,
     hub_bell: Doorbell,
+    keeper_bell: Doorbell,
     waiter: Waiter,
     hub_process: ProcessWatch,
     view: SegmentView,
@@ -319,6 +320,13 @@ impl Client {
                 &hub.hub_wake(),
             )
         }?;
+        // SAFETY: the housekeeper's bell is in the registry too.
+        let keeper_bell = unsafe {
+            Doorbell::open(
+                NonNull::from(&registry_view.control().keeper_bell),
+                &hub.keeper_wake(),
+            )
+        }?;
         // SAFETY: this client is the only consumer of its input ring and the
         // only producer of its output ring.
         let (events_in, events_out) = unsafe {
@@ -345,7 +353,7 @@ impl Client {
             return Err(ConnectError::Timeout);
         }
         claim.armed = false;
-        hub_bell.ring();
+        keeper_bell.ring();
 
         let start = Instant::now();
         loop {
@@ -354,7 +362,7 @@ impl Client {
                 slot_state::REJECTED => {
                     let reason = slot_ref.reject_reason.load(Ordering::Acquire);
                     give_up(slot_ref, slot_state::REJECTED);
-                    hub_bell.ring();
+                    keeper_bell.ring();
                     return Err(ConnectError::Rejected(reason));
                 }
                 slot_state::REQUESTED => {}
@@ -366,7 +374,7 @@ impl Client {
                 if !give_up(slot_ref, slot_state::REQUESTED) {
                     give_up(slot_ref, slot_state::ACCEPTED);
                 }
-                hub_bell.ring();
+                keeper_bell.ring();
                 return Err(ConnectError::Timeout);
             }
             if control.hub_state.load(Ordering::Acquire) != hub_state::RUNNING {
@@ -381,6 +389,7 @@ impl Client {
             events_out,
             go,
             hub_bell,
+            keeper_bell,
             waiter,
             hub_process,
             view,
@@ -556,7 +565,7 @@ impl Drop for Client {
             .client_flags
             .fetch_or(client_flags::LEAVING, Ordering::Release);
         give_up(self.slot_ref(), slot_state::ACCEPTED);
-        self.hub_bell.ring();
+        self.keeper_bell.ring();
     }
 }
 

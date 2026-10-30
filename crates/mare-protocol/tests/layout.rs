@@ -163,6 +163,7 @@ fn field_offsets_are_the_specified_ones() {
         (offset_of!(RegistryHeader, hub_pid), 60),
         (offset_of!(RegistryControl, hub_state), 0),
         (offset_of!(RegistryControl, cycle), 8),
+        (offset_of!(RegistryControl, keeper_bell), 16),
         (offset_of!(RegistryControl, hub_bell), 64),
         (offset_of!(RegistrySlot, state), 0),
         (offset_of!(RegistrySlot, generation), 4),

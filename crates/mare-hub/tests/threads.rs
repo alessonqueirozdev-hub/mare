@@ -162,3 +162,42 @@ fn a_stalled_client_does_not_hold_the_others() {
         "{done:?}"
     );
 }
+
+#[test]
+fn a_connecting_client_wakes_the_housekeeper() {
+    let name = unique_hub();
+    // A housekeeper that, left alone, would look at the registry only once
+    // every ten seconds: a client adopted sooner was adopted because it rang.
+    let config = HubConfig {
+        max_clients: 4,
+        housekeeping_interval: Duration::from_secs(10),
+        ..HubConfig::new(name.clone())
+    };
+    let hub = mare_hub::start(
+        &config,
+        FakeDevice::new(device(128), Pacing::RealTime),
+        Arc::new(SystemClock::new()),
+    )
+    .unwrap();
+    // Let the housekeeper settle into its long sleep.
+    std::thread::sleep(Duration::from_millis(200));
+    for round in 0..3 {
+        let start = Instant::now();
+        let client = Client::connect(&name, &ClientConfig::new("quick", 0, 2)).unwrap();
+        let took = start.elapsed();
+        eprintln!("adopted in {took:?}");
+        assert!(took < Duration::from_secs(1), "round {round}: {took:?}");
+        drop(client);
+        // Leaving rings it too: the slot is free again long before ten
+        // seconds.
+        let left = Instant::now();
+        while hub.stats().left < round + 1 {
+            assert!(left.elapsed() < Duration::from_secs(1), "never freed");
+            std::thread::sleep(Duration::from_millis(1));
+        }
+    }
+    let started = Instant::now();
+    drop(hub.stop());
+    // Stopping rings it as well, rather than waiting out its sleep.
+    assert!(started.elapsed() < Duration::from_secs(2));
+}

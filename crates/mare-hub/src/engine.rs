@@ -205,6 +205,9 @@ impl<D: Device> Engine<D> {
             if current == phase::RETIRING {
                 *local = Local::default();
                 slot.phase.store(phase::RETIRED, Ordering::Release);
+                // The housekeeper frees it as soon as it knows; one signal,
+                // only when a client goes.
+                shared.keeper_bell.ring();
                 continue;
             }
             if current != phase::LIVE {

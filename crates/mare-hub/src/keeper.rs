@@ -41,17 +41,30 @@ struct Watch {
 pub struct Housekeeper {
     shared: Arc<Shared>,
     watches: Vec<Watch>,
+    waiter: mare_sys::Waiter,
 }
 
 impl Housekeeper {
     pub(crate) fn new(shared: Arc<Shared>) -> Self {
         let watches = (0..shared.slots.len()).map(|_| Watch::default()).collect();
-        Self { shared, watches }
+        Self {
+            shared,
+            watches,
+            waiter: mare_sys::Waiter::coarse(),
+        }
     }
 
     /// The hub's counters.
     pub fn stats(&self) -> Stats {
         self.shared.counters.snapshot()
+    }
+
+    /// Sleeps until a client rings the housekeeper's doorbell (it connects
+    /// or leaves) or `timeout` passes. Returns whether it was rung.
+    pub fn wait(&mut self, timeout: Duration) -> bool {
+        let bell = &self.shared.keeper_bell;
+        let seen = bell.seen();
+        bell.wait(&mut self.waiter, seen, timeout)
     }
 
     /// One pass over the registry.

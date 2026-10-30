@@ -42,7 +42,7 @@ extern "C" {
 /* Versions. A reader refuses another major version; minor versions only give
  * meaning to reserved bytes. */
 #define MARE_VERSION_MAJOR 0
-#define MARE_VERSION_MINOR 1
+#define MARE_VERSION_MINOR 2
 
 #define MARE_BLOCK_ALIGN 64
 
@@ -101,7 +101,8 @@ typedef struct mare_registry_control {
     MARE_ATOMIC uint32_t hub_state; /* MARE_HUB_* */
     uint8_t pad0[4];
     MARE_ATOMIC uint64_t cycle;     /* the last cycle the hub started */
-    uint8_t pad1[48];
+    MARE_ATOMIC uint32_t keeper_bell; /* the housekeeper's doorbell (0.2) */
+    uint8_t pad1[44];
     MARE_ATOMIC uint32_t hub_bell;  /* the hub's doorbell */
     uint8_t pad2[60];
 } mare_registry_control;
@@ -282,6 +283,7 @@ MARE_CHECK("event size", sizeof(mare_ump_event) == 24);
 MARE_CHECK("hub_pid", offsetof(mare_registry_header, hub_pid) == 60);
 MARE_CHECK("slot_count", offsetof(mare_registry_header, slot_count) == 40);
 MARE_CHECK("cycle", offsetof(mare_registry_control, cycle) == 8);
+MARE_CHECK("keeper_bell", offsetof(mare_registry_control, keeper_bell) == 16);
 MARE_CHECK("hub_bell", offsetof(mare_registry_control, hub_bell) == 64);
 MARE_CHECK("segment_size", offsetof(mare_registry_slot, segment_size) == 16);
 MARE_CHECK("late_cycles", offsetof(mare_registry_slot, late_cycles) == 32);

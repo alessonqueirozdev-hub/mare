@@ -68,6 +68,11 @@ impl HubName {
         format!("{PREFIX}{}.bell", self.0)
     }
 
+    /// The name of the hub housekeeper's wake object (Windows only).
+    pub fn keeper_wake(&self) -> String {
+        format!("{PREFIX}{}.keeper", self.0)
+    }
+
     /// The name of the segment of the client in `slot`, at `generation`.
     pub fn segment(&self, slot: u32, generation: u32) -> String {
         format!("{PREFIX}{}.{slot:x}.{generation:x}", self.0)

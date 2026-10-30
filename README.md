@@ -28,8 +28,8 @@ It is part of the ecosystem of the
 from Recife: every program built on Manguebyte will speak MARÉ.
 
 > **Status: milestone 2.** The shared-memory layout, the client library and
-> a hub tested against fake devices are built and tested on Windows and
-> Linux. Milestone 3 is under way: a WASAPI device (output, and input beside
+> a hub tested against fake devices are built and tested on Windows, Linux
+> and macOS (CI). Milestone 3 is under way: a WASAPI device (output, and input beside
 > it), tried by hand on one real device ([docs/HARDWARE.md](docs/HARDWARE.md)). [docs/DESIGN.md](docs/DESIGN.md)
 > is the specification, including what MARÉ is not (not a kernel driver, and
 > not lower latency than the hardware allows);

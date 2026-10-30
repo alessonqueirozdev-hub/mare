@@ -7,6 +7,24 @@ break the protocol and the API.
 
 ## Unreleased
 
+### Drift correction (`mare-drift`)
+
+- `Resampler`: a variable-ratio resampler (Kaiser-windowed sinc, 64 taps,
+  256 phases, interpolated between phases, unity gain at DC) whose ratio may
+  change every output frame. Against exact sines its error is −91 to
+  −123 dB RMS at ratios within ±1000 ppm, fixed or swept, up to 18 kHz at
+  48 kHz; input pushed in pieces of any size gives the same output bit for
+  bit.
+- `RatioController`: a proportional-integral loop on a queue's level, after
+  a low-pass filter, that sets the ratio and estimates the drift. Over two
+  simulated hours at −300 to +500 ppm it never lets the queue empty or
+  overflow, and its estimate settles within 0.2 ppm (3 ppm with ±30 frames
+  of timing error); it follows a clock wandering ±20 ppm and absorbs a
+  sudden change of 400 ppm. A sine crossing the closed loop comes out at
+  −102 dB RMS against the exact sine: no frame dropped, repeated or moved.
+- [ADR 0001](docs/adr/0001-drift-correction-by-queue-level.md): why drift
+  is corrected by the queue's level, measured finer than a packet.
+
 ### WASAPI (`mare-wasapi`)
 
 - Shared mode falls back to `IAudioClient` at the engine's default period

@@ -1,0 +1,13 @@
+[package]
+name = "mare-drift"
+description = "Drift correction for MARÉ: an adaptive resampler and a controller that sets its ratio from the level of a queue"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[lints]
+workspace = true

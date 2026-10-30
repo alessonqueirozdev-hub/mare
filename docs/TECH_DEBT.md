@@ -31,6 +31,8 @@ Each item is scored from 1 to 5 on three axes, as in Manguebyte:
 | 19 | Latency is said only as WASAPI reports it (period, buffer, the driver's stream latency, which the Realtek driver gives as 0 in shared mode); nothing yet measures a round trip through a loopback cable, which DESIGN.md promises | Test | 3 | 2 | 3 | 15 |
 | 20 | Exclusive mode tries formats at the mixer's channel count and sample rate (or the one asked for) only; a device whose exclusive formats have other channel counts is refused rather than adapted | Code | 2 | 1 | 2 | 12 |
 | 22 | Two earlier meter runs on the Realtek microphone (shared) read exact zeros for their first 3 s; the next two did not. What causes it (the microphone waking, the system's effects, something else) is unknown, and the meter does not time the 3 discontinuities every run reports | Test | 1 | 2 | 1 | 15 |
+| 23 | `mare-drift` is built and tested on its own but not yet joined to devices: there is no aggregate device, so the hub still runs one device. The controller needs each queue's level finer than a packet, which needs the arrival time of each packet; nothing measures that yet | Architecture | 4 | 2 | 3 | 18 |
+| 24 | The resampler's filter (64 taps) costs 64 multiply-adds a frame a channel in a plain loop; a device of many channels would want SIMD or a shorter filter at a measured cost in aliasing | Code | 1 | 1 | 2 | 8 |
 
 ## Paid back
 

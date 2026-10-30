@@ -17,6 +17,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "mare-drift"
+version = "0.1.0"
+
+[[package]]
 name = "mare-hub"
 version = "0.1.0"
 dependencies = [

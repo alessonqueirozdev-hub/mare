@@ -254,7 +254,10 @@ As in Manguebyte, nothing is claimed before its test exists.
    built and have run by hand on the laptop's Realtek device, recorded in
    [HARDWARE.md](HARDWARE.md); the UMC404HD and a loopback measurement of
    latency are next).
-4. Several devices with drift correction; hot-plug.
+4. Several devices with drift correction; hot-plug (under way: the
+   resampler and the controller are built and tested,
+   [ADR 0001](adr/0001-drift-correction-by-queue-level.md); joining them to
+   devices is next).
 5. MIDI 2.0 on the same clock.
 6. The Manguebyte backend.
 7. The DAW bridge (separate, GPLv3).

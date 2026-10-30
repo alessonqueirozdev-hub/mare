@@ -302,12 +302,19 @@ impl ProcessWatch {
 
     /// Whether the process has ended. Does not block.
     ///
-    /// On Windows the watch holds the process, so its id cannot be reused
-    /// while the watch lives. Elsewhere the id is checked with `kill(pid, 0)`:
-    /// a process that has ended but not been reaped by its parent still
-    /// counts as running, and a reused id would hide the end.
+    /// On Windows the watch holds the process, and on Linux (5.3 and later)
+    /// a process descriptor, so the end is seen exactly. Elsewhere the id is
+    /// checked with `kill(pid, 0)`: a process that has ended but not been
+    /// reaped by its parent still counts as running, and a reused id would
+    /// hide the end. [`ProcessWatch::is_exact`] says which.
     pub fn has_exited(&self) -> bool {
         self.inner.has_exited()
+    }
+
+    /// Whether the watch sees the end exactly (a process handle or
+    /// descriptor), rather than by checking the id.
+    pub fn is_exact(&self) -> bool {
+        self.inner.exact()
     }
 }
 

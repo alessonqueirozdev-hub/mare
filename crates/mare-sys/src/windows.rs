@@ -436,6 +436,10 @@ impl ProcessWatch {
         // SAFETY: the handle is an open process; a zero timeout never blocks.
         unsafe { WaitForSingleObject(self.process.0, 0) == WAIT_OBJECT_0 }
     }
+
+    pub(crate) fn exact(&self) -> bool {
+        true
+    }
 }
 
 pub(crate) struct RealtimeThread {

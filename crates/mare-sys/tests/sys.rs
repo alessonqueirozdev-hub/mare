@@ -174,6 +174,34 @@ fn a_process_is_seen_to_end() {
     let watch = ProcessWatch::open(child.id()).unwrap();
     child.wait().unwrap();
     assert!(watch.has_exited());
+    assert_eq!(watch.is_exact(), cfg!(any(windows, target_os = "linux")));
+}
+
+/// A process that has ended but that its parent has not reaped yet (a
+/// zombie) has ended, for a watch that sees exactly.
+#[test]
+fn an_unreaped_process_is_seen_to_end_where_the_watch_is_exact() {
+    let mut child = std::process::Command::new(std::env::current_exe().unwrap())
+        .arg("--list")
+        .stdout(std::process::Stdio::null())
+        .spawn()
+        .unwrap();
+    let watch = ProcessWatch::open(child.id()).unwrap();
+    if !watch.is_exact() {
+        eprintln!("skipped: this system's watch checks the id");
+        child.wait().unwrap();
+        return;
+    }
+    // Not reaped: wait for the end without calling `wait`.
+    let start = Instant::now();
+    while !watch.has_exited() {
+        assert!(
+            start.elapsed() < Duration::from_secs(30),
+            "never seen to end"
+        );
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    child.wait().unwrap();
 }
 
 #[test]

@@ -75,6 +75,11 @@ break the protocol and the API.
 
 ### System (`mare-sys`)
 
+- On Linux a `ProcessWatch` holds a `pidfd`, so a client that ends is
+  seen exactly, reaped by its parent or not, and a reused process id
+  cannot hide it. `ProcessWatch::is_exact` says whether a watch sees the
+  end exactly (Windows and Linux) or by checking the id (elsewhere).
+
 - On Windows every mapping and event is created with a protected access
   list that allows the current user and nobody else, instead of the token's
   default list (which also allows SYSTEM and administrators).

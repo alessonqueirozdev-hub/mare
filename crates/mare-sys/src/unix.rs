@@ -241,13 +241,20 @@ pub(crate) fn wait(
 
 pub(crate) struct ProcessWatch {
     pid: libc::pid_t,
+    /// On Linux 5.3 and later, a descriptor of the process itself, which
+    /// becomes readable when it ends, whether or not its parent has reaped
+    /// it, and which a reused id cannot fool. Elsewhere, or on older
+    /// kernels, -1, and the id is checked with `kill(pid, 0)`.
+    pidfd: libc::c_int,
 }
 
 impl ProcessWatch {
     pub(crate) fn open(pid: u32) -> io::Result<Self> {
+        let pid = libc::pid_t::try_from(pid)
+            .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "pid out of range"))?;
         let watch = Self {
-            pid: libc::pid_t::try_from(pid)
-                .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "pid out of range"))?,
+            pid,
+            pidfd: open_pidfd(pid),
         };
         if watch.has_exited() {
             return Err(io::Error::new(io::ErrorKind::NotFound, "no such process"));
@@ -256,6 +263,16 @@ impl ProcessWatch {
     }
 
     pub(crate) fn has_exited(&self) -> bool {
+        if self.pidfd >= 0 {
+            let mut poll = libc::pollfd {
+                fd: self.pidfd,
+                events: libc::POLLIN,
+                revents: 0,
+            };
+            // SAFETY: one valid pollfd; a zero timeout never blocks.
+            let ready = unsafe { libc::poll(&mut poll, 1, 0) };
+            return ready > 0 && poll.revents & libc::POLLIN != 0;
+        }
         // SAFETY: signal 0 only checks that the process exists.
         if unsafe { libc::kill(self.pid, 0) } == 0 {
             return false;
@@ -263,6 +280,31 @@ impl ProcessWatch {
         // EPERM means it exists but belongs to someone else.
         io::Error::last_os_error().raw_os_error() == Some(libc::ESRCH)
     }
+
+    pub(crate) fn exact(&self) -> bool {
+        self.pidfd >= 0
+    }
+}
+
+impl Drop for ProcessWatch {
+    fn drop(&mut self) {
+        if self.pidfd >= 0 {
+            // SAFETY: the descriptor is open and owned by this value.
+            unsafe { libc::close(self.pidfd) };
+        }
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn open_pidfd(pid: libc::pid_t) -> libc::c_int {
+    // SAFETY: plain system call; failure (an old kernel, no such process)
+    // returns -1, and the caller falls back.
+    unsafe { libc::syscall(libc::SYS_pidfd_open, pid, 0) as libc::c_int }
+}
+
+#[cfg(not(target_os = "linux"))]
+fn open_pidfd(_pid: libc::pid_t) -> libc::c_int {
+    -1
 }
 
 /// Raising a thread's priority is not done yet on these systems.

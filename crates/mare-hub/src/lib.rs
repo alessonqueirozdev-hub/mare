@@ -45,7 +45,7 @@ use mare_sys::{Doorbell, HubName, ProcessWatch, SharedMemory, current_pid};
 pub use clock::{Clock, FakeClock, SystemClock};
 pub use device::{AudioBlock, Device, DeviceConfig, DeviceError};
 pub use engine::{ClientId, CycleReport, Engine};
-pub use keeper::Housekeeper;
+pub use keeper::{CLAIM_GRACE, Housekeeper};
 pub use mare_protocol::segment::MAX_FRAMES;
 pub use shared::Stats;
 

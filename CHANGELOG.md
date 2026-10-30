@@ -119,6 +119,9 @@ break the protocol and the API.
 
 ### Hub (`mare-hub`)
 
+- A slot claimed with no process id for longer than `CLAIM_GRACE` (1 s)
+  is freed: its client died before saying who it was.
+
 - The housekeeper sleeps on its doorbell instead of looking at the
   registry every 2 ms; `HubConfig::housekeeping_interval` (20 ms) bounds
   its sleep. The engine rings it when it lets a client go.

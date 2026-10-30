@@ -430,3 +430,41 @@ fn the_hub_refuses_segments_it_cannot_trust() {
     assert_eq!(keeper.stats().rejected, 5);
     assert_eq!(keeper.stats().accepted, 0);
 }
+
+#[test]
+fn a_slot_claimed_by_a_client_that_died_at_once_is_freed() {
+    let hub = unique_hub();
+    let (_engine, mut keeper, _clock) = fake_hub(&hub, 1, silence);
+    let registry = SharedMemory::open(&hub.registry()).unwrap();
+    let len = registry.len() as u64;
+    // SAFETY: the mapping is kept to the end of the test.
+    let header = unsafe { RegistryHeader::read_from(registry.base(), len) }.unwrap();
+    let layout = RegistryLayout::validate(&header, len).unwrap();
+    // SAFETY: as above.
+    let view = unsafe { RegistryView::from_raw(registry.base(), len, layout) }.unwrap();
+    let slot = view.slot(0).unwrap();
+
+    // A client claims the only slot and dies before storing its process id.
+    slot.state
+        .compare_exchange(
+            slot_state::FREE,
+            slot_state::CLAIMED,
+            Ordering::AcqRel,
+            Ordering::Relaxed,
+        )
+        .unwrap();
+    keeper.poll();
+    assert_eq!(slot.state.load(Ordering::Acquire), slot_state::CLAIMED);
+    assert!(matches!(
+        connect(&mut keeper, &hub, &ClientConfig::new("later", 0, 2)),
+        Err(ConnectError::Full)
+    ));
+
+    // After the grace, the slot is free again, under a new generation.
+    std::thread::sleep(mare_hub::CLAIM_GRACE + Duration::from_millis(50));
+    keeper.poll();
+    assert_eq!(slot.state.load(Ordering::Acquire), slot_state::FREE);
+    assert_eq!(slot.generation.load(Ordering::Acquire), 1);
+    let client = connect(&mut keeper, &hub, &ClientConfig::new("later", 0, 2)).unwrap();
+    assert_eq!(client.slot(), 0);
+}

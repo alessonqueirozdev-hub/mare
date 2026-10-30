@@ -24,6 +24,11 @@ use crate::shared::{Attached, Counters, Shared, Stats, phase};
 /// anyway.
 const REJECTED_GRACE: Duration = Duration::from_secs(1);
 
+/// How long a slot may stay claimed with no process id before it is freed.
+/// A client stores its id right after claiming, two instructions later; one
+/// that has not after this long died in between.
+pub const CLAIM_GRACE: Duration = Duration::from_secs(1);
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Ending {
     Left,
@@ -35,6 +40,7 @@ struct Watch {
     process: Option<ProcessWatch>,
     ending: Option<Ending>,
     rejected_at: Option<Instant>,
+    claimed_at: Option<Instant>,
 }
 
 /// The hub's housekeeping thread.
@@ -96,7 +102,9 @@ impl Housekeeper {
                         self.free(index);
                     }
                 }
-                slot_state::CLAIMED if self.process_ended(index) => self.free(index),
+                slot_state::CLAIMED if self.process_ended(index) || self.claim_abandoned(index) => {
+                    self.free(index)
+                }
                 _ => {}
             },
             phase::LIVE => {
@@ -139,6 +147,20 @@ impl Housekeeper {
 
     /// Whether the process that claimed slot `index` has ended (a process
     /// that cannot be watched counts as ended).
+    /// Whether slot `index` has been claimed, with no process id, for longer
+    /// than [`CLAIM_GRACE`]: its client died between claiming the slot and
+    /// saying who it is, and nothing else would ever free it.
+    fn claim_abandoned(&mut self, index: usize) -> bool {
+        if self.registry_slot(index).client_pid.load(Ordering::Acquire) != 0 {
+            self.watches[index].claimed_at = None;
+            return false;
+        }
+        let since = *self.watches[index]
+            .claimed_at
+            .get_or_insert_with(Instant::now);
+        since.elapsed() >= CLAIM_GRACE
+    }
+
     fn process_ended(&self, index: usize) -> bool {
         match self.registry_slot(index).client_pid.load(Ordering::Acquire) {
             0 => false,

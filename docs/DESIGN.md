@@ -20,7 +20,8 @@ is in [TECH_DEBT.md](TECH_DEBT.md).
 ## Why
 
 On Windows, music software has standardised on ASIO, a protocol from
-Steinberg between an application and a device's driver. ASIO is fast
+Steinberg between an application and a device's driver (ASIO is a trademark
+of Steinberg Media Technologies GmbH; see [Trademarks](#trademarks)). ASIO is fast
 because the driver underneath is fast, but the protocol itself carries
 limits from the 1990s:
 
@@ -267,6 +268,13 @@ As in Manguebyte, nothing is claimed before its test exists.
   program, or both.
 - Whether clients may share one process with the hub (in-process plugins of
   the hub itself), for the lowest overhead.
+
+## Trademarks
+
+ASIO is a trademark and software of Steinberg Media Technologies GmbH. MARÉ
+is not affiliated with, endorsed by or derived from Steinberg or ASIO: it
+uses no part of the ASIO SDK, and its name and its parts' names do not
+contain "ASIO". The protocol is named here only to compare it with MARÉ.
 
 ## Licence
 

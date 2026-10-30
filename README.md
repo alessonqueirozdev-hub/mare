@@ -13,7 +13,8 @@ emptying in cycles, as audio buffers do.
 
 MARÉ keeps what makes low-latency audio fast (applications write straight
 into the buffers the device plays, on the device's schedule) and adds what
-ASIO never had:
+ASIO never had (ASIO is a trademark of Steinberg Media Technologies GmbH;
+see [Trademarks](#trademarks)):
 
 - **many applications at once** on the same device, each with low latency;
 - **many devices as one**, with their clocks' drift corrected;
@@ -49,6 +50,13 @@ from Recife: every program built on Manguebyte will speak MARÉ.
 ```bash
 cargo test --workspace
 ```
+
+## Trademarks
+
+ASIO is a trademark and software of Steinberg Media Technologies GmbH. MARÉ
+is not affiliated with, endorsed by or derived from Steinberg or ASIO: it
+uses no part of the ASIO SDK, and its name and its parts' names do not
+contain "ASIO". The protocol is named here only to compare it with MARÉ.
 
 ## Licence
 

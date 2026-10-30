@@ -47,12 +47,17 @@ Each item is scored from 1 to 5 on three axes, as in Manguebyte:
 | 14 | A client learns that its hub has gone only when one of its waits times out (every 100 ms in `Client::run`). Waiting on the hub's process handle together with the doorbell would make it immediate on Windows | Code | 1 | 1 | 2 | 8 |
 | 15 | `WasapiDevice` is output only: no capture, so the hub's device inputs are silence. Duplex needs a capture stream on the same period, and a decision on which of the two events paces the cycle | Architecture | 4 | 2 | 3 | 18 |
 | 16 | A device that fails (unplugged, taken, invalidated) stops the hub's cycle thread with `DeviceError::Lost`; nothing reopens it or carries on without it. Hot-plug is milestone 4 | Architecture | 3 | 3 | 3 | 18 |
-| 17 | WASAPI has run on one output only, the laptop's Realtek: exclusive at 3 ms periods and shared at 10 ms (its driver offers no shorter shared period), heard clean by hand (docs/HARDWARE.md). Small shared periods, other drivers, and the UMC404HD are untried | Test | 3 | 3 | 1 | 30 |
+| 17 | WASAPI has run on one device only, the laptop's Realtek: output in exclusive mode (3 ms) and shared mode (10 ms, its driver's shortest) heard clean by hand, and duplex with its microphone in both modes (docs/HARDWARE.md). Small shared periods, other drivers and the UMC404HD are untried | Test | 3 | 3 | 1 | 30 |
 | 18 |
 | 16 | A device that fails (unplugged, taken, invalidated) stops the hub's cycle thread with `DeviceError::Lost`; nothing reopens it or carries on without it. Hot-plug is milestone 4 | Architecture | 3 | 3 | 3 | 18 |
-| 17 | Exclusive mode has been compiled and its test written, but not yet run on any device (it takes the device from other programs, so it is run by hand). Shared mode has been run on one output only (Realtek), whose driver offers no period below 480 frames; small shared periods and the UMC404HD are untried (docs/HARDWARE.md) | Test | 3 | 3 | 1 | 30 |
+| 17 | WASAPI has run on one device only, the laptop's Realtek: output in exclusive mode (3 ms) and shared mode (10 ms, its driver's shortest) heard clean by hand, and duplex with its microphone in both modes (docs/HARDWARE.md). Small shared periods, other drivers and the UMC404HD are untried | Test | 3 | 3 | 1 | 30 |
 | 18 | Shared mode needs `IAudioClient3` (Windows 10 or later) and refuses to open without it, rather than falling back to `IAudioClient` with the engine's default period | Code | 1 | 1 | 1 | 10 |
 | 19 | Latency is said only as WASAPI reports it (period, buffer, the driver's stream latency, which the Realtek driver gives as 0 in shared mode); nothing yet measures a round trip through a loopback cable, which DESIGN.md promises | Test | 3 | 2 | 3 | 15 |
 | 20 | Exclusive mode tries formats at the mixer's channel count and sample rate (or the one asked for) only; a device whose exclusive formats have other channel counts is refused rather than adapted | Code | 2 | 1 | 2 | 12 |
-| 21 | A client joining at 3 ms periods lost its first 10 to 150 ms (late once, then busy 3 to 47 times), even one that only writes zeros: the hub woke it as soon as it was adopted, while it was still connecting. Clients now set a ready flag when they first wait, and the hub wakes only ready clients (proved on a fake clock, `cycles.rs`); whether that removes the whole loss in exclusive mode on the Realtek has still to be seen by hand | Test | 2 | 1 | 1 | 15 |
 | 22 | Two earlier meter runs on the Realtek microphone (shared) read exact zeros for their first 3 s; the next two did not. What causes it (the microphone waking, the system's effects, something else) is unknown, and the meter does not time the 3 discontinuities every run reports | Test | 1 | 2 | 1 | 15 |
+
+## Paid back
+
+| # | Item | How |
+|---|---|---|
+| 21 | A client joining at 3 ms periods lost its first 10 to 150 ms (late once, then busy 3 to 47 times): the hub woke it while it was still connecting | Clients set a ready flag when they first wait, and the hub wakes only ready clients. On the Realtek in exclusive mode the start then had nothing late or busy, and the hub's longest wait fell from 2.2 to 2.7 ms to 0.18 ms (2026-10-29) |

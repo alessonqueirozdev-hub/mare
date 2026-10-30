@@ -19,6 +19,19 @@ reported. Add `--exclusive` for exclusive mode.
 
 ## Sessions
 
+### 2026-10-29: by hand, a client that waits to be ready
+
+Exclusive mode on the Realtek output, silence, run in a terminal the person
+watched, after clients began setting a ready flag and the hub began waking
+only ready clients (`tests/device.rs`, ignored test).
+
+While the client started: 22 cycles, the client in 20 of them, never late,
+never busy; before the change, three runs had shown it late once and busy
+3 to 17 times there. Over the measured 333 cycles (0.97 s): nothing late,
+nothing busy, no heap calls. The hub's longest wait for the client over the
+whole run was 0.18 ms, against 2.2 to 2.7 ms before, all of which had come
+while the client started.
+
 ### 2026-10-29: by hand, where the meter's losses came from
 
 The person watching a terminal; output silent; nothing recorded kept.

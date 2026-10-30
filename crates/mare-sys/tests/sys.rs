@@ -34,6 +34,46 @@ fn both_mappings_see_the_same_bytes() {
 }
 
 #[test]
+fn only_the_creating_user_may_open_a_segment() {
+    let name = unique_hub().registry();
+    let created = SharedMemory::create(&name, 64).unwrap();
+    assert!(created.is_private_to_user().unwrap());
+    // The same user opens it, as a client of the same user does.
+    let opened = SharedMemory::open(&name).unwrap();
+    assert!(opened.is_private_to_user().unwrap());
+}
+
+/// A mapping made without MARÉ, with the default access list of this
+/// process's token (which also lets in SYSTEM and administrators), is seen
+/// as not private: the check really reads the access list.
+#[cfg(windows)]
+#[test]
+fn a_segment_with_the_default_access_list_is_not_private() {
+    use windows_sys::Win32::Foundation::{CloseHandle, INVALID_HANDLE_VALUE};
+    use windows_sys::Win32::System::Memory::{CreateFileMappingW, PAGE_READWRITE};
+    let name = unique_hub().registry();
+    let wide: Vec<u16> = name.encode_utf16().chain(Some(0)).collect();
+    // SAFETY: plain call with a NUL-terminated name; the handle is closed
+    // below.
+    let raw = unsafe {
+        CreateFileMappingW(
+            INVALID_HANDLE_VALUE,
+            std::ptr::null(),
+            PAGE_READWRITE,
+            0,
+            64,
+            wide.as_ptr(),
+        )
+    };
+    assert!(!raw.is_null());
+    let opened = SharedMemory::open(&name).unwrap();
+    assert!(!opened.is_private_to_user().unwrap());
+    drop(opened);
+    // SAFETY: the handle came from CreateFileMappingW above.
+    unsafe { CloseHandle(raw) };
+}
+
+#[test]
 fn a_name_is_created_once_and_must_exist_to_open() {
     let name = unique_hub().registry();
     let first = SharedMemory::create(&name, 64).unwrap();

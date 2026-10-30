@@ -75,6 +75,11 @@ break the protocol and the API.
 
 ### System (`mare-sys`)
 
+- On Windows every mapping and event is created with a protected access
+  list that allows the current user and nobody else, instead of the token's
+  default list (which also allows SYSTEM and administrators).
+  `SharedMemory::is_private_to_user` reads it back.
+
 - Named shared memory (file mappings on Windows, `shm_open` elsewhere),
   doorbells (a counter in shared memory, plus a named auto-reset event on
   Windows), a high-resolution waitable timer for the hub's sub-millisecond

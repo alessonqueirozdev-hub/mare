@@ -87,6 +87,17 @@ impl SharedMemory {
         self.inner.len()
     }
 
+    /// Whether only the current user can open the segment: on Windows,
+    /// whether its access list has exactly one entry, allowing this user,
+    /// as segments created here have. Elsewhere, segments are created with
+    /// mode `0600`, and this says true.
+    pub fn is_private_to_user(&self) -> io::Result<bool> {
+        #[cfg(windows)]
+        return self.inner.is_private_to_user();
+        #[cfg(not(windows))]
+        return Ok(true);
+    }
+
     /// Whether the mapping is empty (it never is).
     pub fn is_empty(&self) -> bool {
         self.len() == 0

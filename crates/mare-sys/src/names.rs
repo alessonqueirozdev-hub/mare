@@ -1,8 +1,8 @@
 //! The names of a hub's objects.
 //!
 //! On Windows names live in the session's `Local\` namespace, so a hub is
-//! reachable only from the same logon session, and objects take the default
-//! access list of their creator's token. Elsewhere they are POSIX shared
+//! reachable only from the same logon session, and objects are created with
+//! an access list that allows their creator's user and nobody else. Elsewhere they are POSIX shared
 //! memory names, created with mode `0600` (the user alone). Names are kept
 //! under 31 bytes, macOS's limit.
 

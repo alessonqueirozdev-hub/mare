@@ -217,7 +217,9 @@ primitive differ.
 
 The hub runs as the user, never as a service with more rights. Its channel
 and shared memory are created with an access list for that user alone, so
-another user on the same machine cannot connect. There is no network
+another user on the same machine cannot connect (built on Windows, where
+each mapping and event gets a protected access list with a single entry for
+the current user; elsewhere shared memory is created with mode `0600`). There is no network
 transport in the first version. Audio over a network (in the spirit of
 Dante or AES67) is a possible later extension, on the same clock model.
 

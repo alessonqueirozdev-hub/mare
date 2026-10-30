@@ -446,6 +446,21 @@ pub(crate) struct RealtimeThread {
     previous: (libc::c_int, libc::sched_param),
 }
 
+/// `mach_timebase_info`, the ratio of Mach absolute time to nanoseconds.
+/// Declared here because the `libc` crate deprecates its own copy in
+/// favour of another crate; it is a stable, public call of libSystem.
+#[cfg(target_os = "macos")]
+#[repr(C)]
+struct Timebase {
+    numer: u32,
+    denom: u32,
+}
+
+#[cfg(target_os = "macos")]
+unsafe extern "C" {
+    fn mach_timebase_info(info: *mut Timebase) -> libc::c_int;
+}
+
 impl RealtimeThread {
     #[cfg(target_os = "linux")]
     pub(crate) fn promote() -> io::Result<Self> {
@@ -491,9 +506,8 @@ impl RealtimeThread {
     pub(crate) fn promote() -> io::Result<Self> {
         // SAFETY: plain calls on the calling thread with valid arguments.
         unsafe {
-            let mut timebase = libc::mach_timebase_info { numer: 0, denom: 0 };
-            if libc::mach_timebase_info(&mut timebase) != libc::KERN_SUCCESS || timebase.numer == 0
-            {
+            let mut timebase = Timebase { numer: 0, denom: 0 };
+            if mach_timebase_info(&mut timebase) != libc::KERN_SUCCESS || timebase.numer == 0 {
                 return Ok(Self { promoted: false });
             }
             let ticks =

@@ -301,6 +301,10 @@ pub(crate) struct Wake {
 }
 
 impl Wake {
+    pub(crate) fn kind(&self) -> crate::WaitKind {
+        crate::WaitKind::Event
+    }
+
     pub(crate) fn create(name: &str) -> io::Result<Self> {
         let name = wide(name);
         // SAFETY: plain call. Auto-reset, initially not signalled.

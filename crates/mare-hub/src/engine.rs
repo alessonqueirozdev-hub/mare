@@ -348,12 +348,15 @@ impl<D: Device> Engine<D> {
                 let Some(src) = client.view.output(channel as u32) else {
                     break;
                 };
-                // SAFETY: the client marked this cycle done, so its outputs
-                // are complete and it does not touch them until woken again.
-                let src = unsafe { std::slice::from_raw_parts(src.as_ptr(), frames) };
+                // A well-behaved client does not touch its outputs once it
+                // has marked the cycle done, but the hub does not trust it:
+                // each sample is read with a volatile read, so that a client
+                // still writing gives the mix wrong values and nothing worse.
                 let start = channel * *stride;
-                for (out, x) in outputs[start..start + frames].iter_mut().zip(src) {
-                    *out += *x;
+                for (i, out) in outputs[start..start + frames].iter_mut().enumerate() {
+                    // SAFETY: the channel holds `max_frames >= frames`
+                    // samples, mapped while the client is LIVE.
+                    *out += unsafe { src.as_ptr().add(i).read_volatile() };
                 }
             }
             if let Some(ring) = client.events_out.as_mut() {

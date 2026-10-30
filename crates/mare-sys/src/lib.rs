@@ -178,7 +178,27 @@ unsafe impl Send for Doorbell {}
 // SAFETY: as above.
 unsafe impl Sync for Doorbell {}
 
+/// How a doorbell's waiter waits for the counter to change.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum WaitKind {
+    /// On a named auto-reset event (Windows).
+    Event,
+    /// On the counter, with a futex (Linux).
+    Futex,
+    /// On the counter, with `os_sync_wait_on_address` (macOS 14.4 and later).
+    OsSync,
+    /// By polling the counter: spinning, yielding, then sleeping in steps of
+    /// up to 50 µs.
+    Polling,
+}
+
 impl Doorbell {
+    /// How this doorbell's waiter waits.
+    pub fn wait_kind(&self) -> WaitKind {
+        self.wake.kind()
+    }
+
     /// The doorbell whose counter is `word`, creating its wake object under
     /// `name`.
     ///

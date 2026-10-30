@@ -164,6 +164,18 @@ impl Wake {
         }
     }
 
+    pub(crate) fn kind(&self) -> crate::WaitKind {
+        #[cfg(target_os = "linux")]
+        return crate::WaitKind::Futex;
+        #[cfg(target_os = "macos")]
+        return match self.sync {
+            Some(_) => crate::WaitKind::OsSync,
+            None => crate::WaitKind::Polling,
+        };
+        #[cfg(not(any(target_os = "linux", target_os = "macos")))]
+        return crate::WaitKind::Polling;
+    }
+
     #[cfg(target_os = "macos")]
     pub(crate) fn signal(&self, word: &AtomicU32) {
         if let Some(sync) = self.sync {

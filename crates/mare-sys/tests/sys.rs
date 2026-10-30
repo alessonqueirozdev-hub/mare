@@ -7,7 +7,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicU32, AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 
-use mare_sys::{Doorbell, HubName, ProcessWatch, SharedMemory, Waiter, current_pid};
+use mare_sys::{Doorbell, HubName, ProcessWatch, SharedMemory, WaitKind, Waiter, current_pid};
 
 /// A hub name no other test, and no other run, uses at the same time.
 fn unique_hub() -> HubName {
@@ -126,6 +126,26 @@ fn a_ring_from_another_thread_ends_the_wait() {
         assert_eq!(owner.seen(), seen.wrapping_add(1));
         thread.join().unwrap();
     }
+}
+
+#[test]
+fn a_doorbell_says_how_it_waits() {
+    let (_memory, owner, other) = doorbell_pair();
+    let kind = owner.wait_kind();
+    eprintln!("doorbells here wait by {kind:?}");
+    assert_eq!(kind, other.wait_kind());
+    // macOS 14.4 and later (CI's runner among them) have os_sync; older
+    // macOS would poll, and this would fail there, saying so.
+    let expected = if cfg!(windows) {
+        WaitKind::Event
+    } else if cfg!(target_os = "linux") {
+        WaitKind::Futex
+    } else if cfg!(target_os = "macos") {
+        WaitKind::OsSync
+    } else {
+        WaitKind::Polling
+    };
+    assert_eq!(kind, expected);
 }
 
 #[test]

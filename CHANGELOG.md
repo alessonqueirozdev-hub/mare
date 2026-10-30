@@ -75,6 +75,9 @@ break the protocol and the API.
 
 ### System (`mare-sys`)
 
+- `Doorbell::wait_kind` says how a doorbell's waiter waits: on an event,
+  a futex, `os_sync`, or by polling.
+
 - `promote_current_thread` asks for `SCHED_FIFO` on Linux (within the
   user's `RLIMIT_RTPRIO`; a refusal is reported, not an error) and for a
   Mach time-constraint policy on macOS.
@@ -107,6 +110,10 @@ break the protocol and the API.
   events, write outputs and events, mark the cycle done, ring the hub.
 
 ### Hub (`mare-hub`)
+
+- The hub reads each sample of a client's outputs with a volatile read, so
+  a client that writes after marking a cycle done can only spoil the mix,
+  not cause undefined behaviour in the hub.
 
 - A client sets a ready flag (client flags bit 1) when its audio thread
   first waits for a cycle, and the hub wakes, and counts as late, only

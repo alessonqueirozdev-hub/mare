@@ -211,7 +211,14 @@ fn a_thread_is_promoted_and_let_go() {
             // A system without the scheduling service (some Windows Server
             // installations) refuses; that is reported, not hidden.
             match mare_sys::promote_current_thread() {
-                Ok(promoted) => assert_eq!(promoted.is_promoted(), cfg!(windows)),
+                Ok(promoted) => {
+                    eprintln!("promoted: {}", promoted.is_promoted());
+                    // Windows and macOS let any user ask; Linux depends on
+                    // the user's real-time limit, so it is only reported.
+                    if cfg!(any(windows, target_os = "macos")) {
+                        assert!(promoted.is_promoted());
+                    }
+                }
                 Err(error) => {
                     eprintln!("skipped: cannot promote a thread here: {error}");
                     return;

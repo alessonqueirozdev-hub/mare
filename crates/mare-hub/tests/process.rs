@@ -131,3 +131,83 @@ fn a_client_killed_mid_cycle_is_detected_and_freed() {
     // The housekeeper looks every 2 ms; allow for a loaded machine.
     assert!(noticed < Duration::from_secs(5), "took {noticed:?}");
 }
+
+const CHILD_HUB_NAME: &str = "MARE_TEST_CHILD_HUB_NAME";
+
+#[test]
+#[ignore = "started by a_client_learns_at_once_that_its_hub_died, in a child process"]
+fn child_hub() {
+    let Ok(name) = std::env::var(CHILD_HUB_NAME) else {
+        return;
+    };
+    let device = FakeDevice::new(
+        DeviceConfig {
+            sample_rate: 48_000,
+            period_frames: 128,
+            max_frames: 128,
+            input_channels: 0,
+            output_channels: 2,
+        },
+        Pacing::RealTime,
+    );
+    let config = HubConfig::new(HubName::new(&name).unwrap());
+    let _hub = mare_hub::start(&config, device, Arc::new(SystemClock::new())).unwrap();
+    // Run until killed.
+    loop {
+        std::thread::sleep(Duration::from_secs(1));
+    }
+}
+
+#[test]
+fn a_client_learns_at_once_that_its_hub_died() {
+    let name = unique_hub();
+    let mut child = Command::new(std::env::current_exe().unwrap())
+        .args(["child_hub", "--exact", "--ignored", "--nocapture"])
+        .env(CHILD_HUB_NAME, name.as_str())
+        .stdout(Stdio::null())
+        .spawn()
+        .unwrap();
+    // The child's hub takes a moment to publish its registry.
+    let start = Instant::now();
+    let mut client = loop {
+        match Client::connect(&name, &ClientConfig::new("orphan", 0, 2)) {
+            Ok(client) => break client,
+            Err(_) if start.elapsed() < Duration::from_secs(30) => {
+                std::thread::sleep(Duration::from_millis(10));
+            }
+            Err(error) => panic!("never connected: {error}"),
+        }
+    };
+    let (sender, receiver) = std::sync::mpsc::channel();
+    let listener = std::thread::spawn(move || {
+        let mut ran = 0u32;
+        let stopped = client.run(|cycle| {
+            cycle.output(0).unwrap().fill(0.0);
+            ran += 1;
+            if ran == 10 {
+                let _ = sender.send(());
+            }
+        });
+        (stopped, Instant::now())
+    });
+    receiver
+        .recv_timeout(Duration::from_secs(30))
+        .expect("the client never ran");
+
+    child.kill().unwrap();
+    let killed = Instant::now();
+    child.wait().unwrap();
+    let (stopped, noticed) = listener.join().unwrap();
+    let took = noticed.saturating_duration_since(killed);
+    eprintln!("the client noticed in {took:?}");
+    assert_eq!(stopped, Stopped::HubGone);
+    // On Windows the client's wait ends on the hub's process handle; the
+    // bound leaves room for a loaded machine. Elsewhere the client learns
+    // at its next timeout, 100 ms at most.
+    let bound = if cfg!(windows) {
+        Duration::from_millis(50)
+    } else {
+        Duration::from_secs(1)
+    };
+    assert!(took < bound, "took {took:?}");
+}

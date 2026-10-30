@@ -267,6 +267,10 @@ impl Client {
             .header(&config.name, config.latency_frames)
             .map_err(ConnectError::Config)?;
         let hub_process = ProcessWatch::open(header.hub_pid).map_err(ConnectError::NoHub)?;
+        // A second watch of the hub, for the waiter, so that a wait ends the
+        // moment the hub's process does.
+        let waiter = Waiter::coarse()
+            .watching(ProcessWatch::open(header.hub_pid).map_err(ConnectError::NoHub)?);
 
         // Take a free slot.
         let (slot, slot_ref) = (0..registry_view.slot_count())
@@ -377,7 +381,7 @@ impl Client {
             events_out,
             go,
             hub_bell,
-            waiter: Waiter::coarse(),
+            waiter,
             hub_process,
             view,
             registry_view,
@@ -497,7 +501,10 @@ impl Client {
                 self.check_hub()?;
                 return Ok(false);
             }
-            self.go.wait(&mut self.waiter, seen, timeout - elapsed);
+            if !self.go.wait(&mut self.waiter, seen, timeout - elapsed) {
+                // Timed out, or ended because the hub's process did.
+                self.check_hub()?;
+            }
         }
     }
 

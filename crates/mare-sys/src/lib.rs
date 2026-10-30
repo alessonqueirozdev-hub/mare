@@ -6,11 +6,11 @@
 //!   on Windows, `shm_open` elsewhere);
 //! - [`Doorbell`]: a counter in shared memory that one side adds to and the
 //!   other waits on. The counter is the truth; the waiter sleeps until it
-//!   changes, on a named auto-reset event on Windows and on the counter
-//!   itself with a futex on Linux. Other systems (macOS among them) have no
-//!   wake object yet and wait by polling the counter (spinning briefly, then
-//!   sleeping in steps of 50 µs), which works but costs latency and some
-//!   processor time;
+//!   changes, on a named auto-reset event on Windows, and on the counter
+//!   itself with a futex on Linux and `os_sync_wait_on_address` on macOS
+//!   14.4 and later. Other systems, and older macOS, wait by polling the
+//!   counter (spinning briefly, then sleeping in steps of 50 µs), which works
+//!   but costs latency and some processor time;
 //! - [`ProcessWatch`]: whether another process has ended, so that the hub
 //!   frees a client that died.
 //!
@@ -18,7 +18,8 @@
 //!
 //! Only [`Doorbell::ring`] and [`Doorbell::wait`] are meant for real-time
 //! threads. Neither allocates or takes a lock; `ring` makes one system call
-//! (`SetEvent` on Windows, `FUTEX_WAKE` on Linux) and none elsewhere, and
+//! (`SetEvent` on Windows, `FUTEX_WAKE` on Linux, `os_sync_wake_by_address_all`
+//! on macOS) and none elsewhere, and
 //! `wait` is the one blocking call the protocol allows.
 
 use std::fmt;
@@ -143,6 +144,16 @@ impl Waiter {
             inner: imp::Waiter::coarse(),
         }
     }
+
+    /// The same waiter, whose waits also end, with the counter unchanged,
+    /// as soon as `process` ends: a client waiting for its hub learns at
+    /// once that the hub has gone. On Windows only; elsewhere the waits end
+    /// only at their timeout, as before.
+    pub fn watching(self, process: ProcessWatch) -> Self {
+        Self {
+            inner: self.inner.watching(process.inner),
+        }
+    }
 }
 
 // SAFETY: a waiter is used by one thread at a time (`wait` takes it by
@@ -261,8 +272,10 @@ pub struct RealtimeThread {
 }
 
 impl RealtimeThread {
-    /// Whether the system raised the thread's priority. Where MARÉ does not
-    /// know how yet (not Windows), it did not.
+    /// Whether the system raised the thread's priority. On Linux an
+    /// ordinary user without a real-time limit (`RLIMIT_RTPRIO`) is refused;
+    /// on systems MARÉ does not know how to ask (not Windows, Linux or
+    /// macOS), nothing is raised.
     pub fn is_promoted(&self) -> bool {
         self.inner.is_promoted()
     }
@@ -278,8 +291,10 @@ impl fmt::Debug for RealtimeThread {
 
 /// Raises the calling thread to the priority audio threads run at: on
 /// Windows, registers it with the Multimedia Class Scheduler Service as a
-/// "Pro Audio" task at high priority. Elsewhere it changes nothing yet, and
-/// says so through [`RealtimeThread::is_promoted`].
+/// "Pro Audio" task at high priority; on Linux, moves it to `SCHED_FIFO`
+/// where the user's limits allow; on macOS, gives it a Mach time-constraint
+/// policy. [`RealtimeThread::is_promoted`] says whether it worked; a refusal
+/// is not an error.
 ///
 /// Call it once, when the thread starts, not on the real-time path.
 pub fn promote_current_thread() -> io::Result<RealtimeThread> {

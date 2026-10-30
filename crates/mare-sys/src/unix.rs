@@ -139,17 +139,36 @@ impl Drop for SharedMemory {
     }
 }
 
-/// No named object: on Linux the waiter sleeps on the counter itself with a
-/// futex; elsewhere it polls the counter.
-pub(crate) struct Wake;
+/// No named object: the waiter sleeps on the counter itself, with a futex on
+/// Linux and with `os_sync_wait_on_address` on macOS 14.4 and later (looked
+/// up when the doorbell is made, so older systems still run); elsewhere it
+/// polls the counter.
+pub(crate) struct Wake {
+    #[cfg(target_os = "macos")]
+    sync: Option<macos::OsSync>,
+}
 
 impl Wake {
     pub(crate) fn create(_name: &str) -> io::Result<Self> {
-        Ok(Self)
+        Ok(Self::new())
     }
 
     pub(crate) fn open(_name: &str) -> io::Result<Self> {
-        Ok(Self)
+        Ok(Self::new())
+    }
+
+    fn new() -> Self {
+        Self {
+            #[cfg(target_os = "macos")]
+            sync: macos::OsSync::find(),
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    pub(crate) fn signal(&self, word: &AtomicU32) {
+        if let Some(sync) = self.sync {
+            sync.wake_all(word);
+        }
     }
 
     #[cfg(target_os = "linux")]
@@ -170,8 +189,86 @@ impl Wake {
         }
     }
 
-    #[cfg(not(target_os = "linux"))]
+    #[cfg(not(any(target_os = "linux", target_os = "macos")))]
     pub(crate) fn signal(&self, _word: &AtomicU32) {}
+}
+
+#[cfg(target_os = "macos")]
+mod macos {
+    //! `os_sync_wait_on_address` and `os_sync_wake_by_address_all`, Apple's
+    //! public wait-on-address calls (macOS 14.4), with the flag that makes
+    //! them work across processes on shared memory.
+
+    use std::sync::atomic::AtomicU32;
+    use std::time::Duration;
+
+    type WaitFn = unsafe extern "C" fn(
+        addr: *mut libc::c_void,
+        value: u64,
+        size: usize,
+        flags: u32,
+        clock: u32,
+        timeout_ns: u64,
+    ) -> libc::c_int;
+    type WakeFn =
+        unsafe extern "C" fn(addr: *mut libc::c_void, size: usize, flags: u32) -> libc::c_int;
+
+    /// `OS_SYNC_WAIT_ON_ADDRESS_SHARED` and `OS_SYNC_WAKE_BY_ADDRESS_SHARED`.
+    const SHARED: u32 = 1;
+    /// `OS_CLOCK_MACH_ABSOLUTE_TIME`.
+    const MACH_ABSOLUTE_TIME: u32 = 32;
+    /// `RTLD_DEFAULT`: look in every image loaded.
+    const DEFAULT: *mut libc::c_void = -2isize as *mut libc::c_void;
+
+    #[derive(Clone, Copy)]
+    pub(super) struct OsSync {
+        wait: WaitFn,
+        wake: WakeFn,
+    }
+
+    impl OsSync {
+        /// The two calls, if this system has them.
+        pub(super) fn find() -> Option<Self> {
+            // SAFETY: dlsym with NUL-terminated names; a non-null result is
+            // the function with the documented signature.
+            unsafe {
+                let wait = libc::dlsym(DEFAULT, c"os_sync_wait_on_address_with_timeout".as_ptr());
+                let wake = libc::dlsym(DEFAULT, c"os_sync_wake_by_address_all".as_ptr());
+                if wait.is_null() || wake.is_null() {
+                    return None;
+                }
+                Some(Self {
+                    wait: std::mem::transmute::<*mut libc::c_void, WaitFn>(wait),
+                    wake: std::mem::transmute::<*mut libc::c_void, WakeFn>(wake),
+                })
+            }
+        }
+
+        pub(super) fn wake_all(self, word: &AtomicU32) {
+            // SAFETY: a valid, aligned 4-byte word; waking has no other
+            // effect, and no waiter is not an error worth reporting.
+            unsafe { (self.wake)(word.as_ptr().cast(), 4, SHARED) };
+        }
+
+        /// Sleeps while `word` holds `seen`, for at most `timeout`.
+        pub(super) fn wait(self, word: &AtomicU32, seen: u32, timeout: Duration) {
+            // Zero would mean no timeout at all.
+            let nanos = (timeout.as_nanos() as u64).max(1_000);
+            // SAFETY: as above. Returns at once if the word no longer holds
+            // `seen`; a timeout, an interruption or a spurious wake are all
+            // rechecked by the caller.
+            unsafe {
+                (self.wait)(
+                    word.as_ptr().cast(),
+                    u64::from(seen),
+                    4,
+                    SHARED,
+                    MACH_ABSOLUTE_TIME,
+                    nanos,
+                )
+            };
+        }
+    }
 }
 
 pub(crate) struct Waiter;
@@ -183,6 +280,12 @@ impl Waiter {
 
     pub(crate) fn coarse() -> Self {
         Self
+    }
+
+    /// No wait here can also end on a process: futexes and polling see only
+    /// the counter. The caller still learns of the end at its timeout.
+    pub(crate) fn watching(self, _process: ProcessWatch) -> Self {
+        self
     }
 }
 
@@ -228,7 +331,32 @@ pub(crate) fn wait(
     }
 }
 
-#[cfg(not(target_os = "linux"))]
+#[cfg(target_os = "macos")]
+pub(crate) fn wait(
+    wake: &Wake,
+    word: &AtomicU32,
+    seen: u32,
+    timeout: Duration,
+    _waiter: &mut Waiter,
+) -> bool {
+    use std::sync::atomic::Ordering;
+    let Some(sync) = wake.sync else {
+        return crate::poll_wait(word, seen, timeout);
+    };
+    let start = std::time::Instant::now();
+    loop {
+        if word.load(Ordering::Acquire) != seen {
+            return true;
+        }
+        let elapsed = start.elapsed();
+        if elapsed >= timeout {
+            return false;
+        }
+        sync.wait(word, seen, timeout - elapsed);
+    }
+}
+
+#[cfg(not(any(target_os = "linux", target_os = "macos")))]
 pub(crate) fn wait(
     _wake: &Wake,
     word: &AtomicU32,
@@ -307,15 +435,120 @@ fn open_pidfd(_pid: libc::pid_t) -> libc::c_int {
     -1
 }
 
-/// Raising a thread's priority is not done yet on these systems.
-pub(crate) struct RealtimeThread;
+/// On Linux, the thread is moved to `SCHED_FIFO`, at priority 70 or the
+/// most the user's `RLIMIT_RTPRIO` allows; an ordinary user with no
+/// real-time limit is refused, which is reported, not an error. On macOS it
+/// is given a Mach time-constraint policy, which any user may ask for.
+/// Elsewhere nothing changes.
+pub(crate) struct RealtimeThread {
+    promoted: bool,
+    #[cfg(target_os = "linux")]
+    previous: (libc::c_int, libc::sched_param),
+}
 
 impl RealtimeThread {
+    #[cfg(target_os = "linux")]
     pub(crate) fn promote() -> io::Result<Self> {
-        Ok(Self)
+        /// The priority asked for: high, below the kernel's own threads and
+        /// what JACK-style audio systems give their clients' servers.
+        const WANTED: libc::c_int = 70;
+        // SAFETY: plain calls on the calling thread with valid out-pointers.
+        unsafe {
+            let thread = libc::pthread_self();
+            let mut policy = 0;
+            let mut previous: libc::sched_param = std::mem::zeroed();
+            if libc::pthread_getschedparam(thread, &mut policy, &mut previous) != 0 {
+                return Err(io::Error::last_os_error());
+            }
+            let mut limit: libc::rlimit = std::mem::zeroed();
+            let allowed = if libc::getrlimit(libc::RLIMIT_RTPRIO, &mut limit) == 0
+                && limit.rlim_cur != libc::RLIM_INFINITY
+            {
+                (limit.rlim_cur as libc::c_int).min(WANTED)
+            } else {
+                WANTED
+            };
+            let mut promoted = false;
+            if allowed > 0 {
+                let mut param: libc::sched_param = std::mem::zeroed();
+                param.sched_priority = allowed.min(libc::sched_get_priority_max(libc::SCHED_FIFO));
+                promoted = libc::pthread_setschedparam(thread, libc::SCHED_FIFO, &param) == 0;
+            }
+            // With no limit set, root may still succeed at the wanted value.
+            if !promoted && allowed == 0 {
+                let mut param: libc::sched_param = std::mem::zeroed();
+                param.sched_priority = WANTED;
+                promoted = libc::pthread_setschedparam(thread, libc::SCHED_FIFO, &param) == 0;
+            }
+            Ok(Self {
+                promoted,
+                previous: (policy, previous),
+            })
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    pub(crate) fn promote() -> io::Result<Self> {
+        // SAFETY: plain calls on the calling thread with valid arguments.
+        unsafe {
+            let mut timebase = libc::mach_timebase_info { numer: 0, denom: 0 };
+            if libc::mach_timebase_info(&mut timebase) != libc::KERN_SUCCESS || timebase.numer == 0
+            {
+                return Ok(Self { promoted: false });
+            }
+            let ticks =
+                |nanos: u64| (nanos * u64::from(timebase.denom) / u64::from(timebase.numer)) as u32;
+            // An audio thread woken every few milliseconds that needs about
+            // a millisecond and a half, within three.
+            let mut policy = libc::thread_time_constraint_policy {
+                period: ticks(5_000_000),
+                computation: ticks(1_500_000),
+                constraint: ticks(3_000_000),
+                preemptible: 1,
+            };
+            let thread = libc::pthread_mach_thread_np(libc::pthread_self());
+            let result = libc::thread_policy_set(
+                thread,
+                libc::THREAD_TIME_CONSTRAINT_POLICY as libc::thread_policy_flavor_t,
+                (&mut policy as *mut libc::thread_time_constraint_policy).cast(),
+                libc::THREAD_TIME_CONSTRAINT_POLICY_COUNT,
+            );
+            Ok(Self {
+                promoted: result == libc::KERN_SUCCESS,
+            })
+        }
+    }
+
+    #[cfg(not(any(target_os = "linux", target_os = "macos")))]
+    pub(crate) fn promote() -> io::Result<Self> {
+        Ok(Self { promoted: false })
     }
 
     pub(crate) fn is_promoted(&self) -> bool {
-        false
+        self.promoted
+    }
+}
+
+impl Drop for RealtimeThread {
+    fn drop(&mut self) {
+        if !self.promoted {
+            return;
+        }
+        #[cfg(target_os = "linux")]
+        // SAFETY: restores the policy read from this same thread, which the
+        // guard cannot leave.
+        unsafe {
+            libc::pthread_setschedparam(libc::pthread_self(), self.previous.0, &self.previous.1);
+        }
+        #[cfg(target_os = "macos")]
+        // SAFETY: as above; the standard policy takes no data.
+        unsafe {
+            libc::thread_policy_set(
+                libc::pthread_mach_thread_np(libc::pthread_self()),
+                libc::THREAD_STANDARD_POLICY as libc::thread_policy_flavor_t,
+                std::ptr::null_mut(),
+                0,
+            );
+        }
     }
 }

@@ -75,6 +75,15 @@ break the protocol and the API.
 
 ### System (`mare-sys`)
 
+- `promote_current_thread` asks for `SCHED_FIFO` on Linux (within the
+  user's `RLIMIT_RTPRIO`; a refusal is reported, not an error) and for a
+  Mach time-constraint policy on macOS.
+- Doorbells on macOS 14.4 and later sleep on the counter with
+  `os_sync_wait_on_address`, shared between processes; older macOS polls.
+- `Waiter::watching`: on Windows a wait also ends when a given process
+  does. A client's waits watch its hub, so it learns of the hub's death in
+  a few milliseconds instead of at its next 100 ms timeout.
+
 - On Linux a `ProcessWatch` holds a `pidfd`, so a client that ends is
   seen exactly, reaped by its parent or not, and a reused process id
   cannot hide it. `ProcessWatch::is_exact` says whether a watch sees the

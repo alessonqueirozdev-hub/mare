@@ -343,6 +343,8 @@ impl Wake {
 
 pub(crate) struct Waiter {
     timer: Option<Handle>,
+    /// A process whose end also ends a wait (the hub, for a client).
+    watched: Option<ProcessWatch>,
 }
 
 impl Waiter {
@@ -360,11 +362,20 @@ impl Waiter {
         };
         Ok(Self {
             timer: Some(Handle::new(raw)?),
+            watched: None,
         })
     }
 
     pub(crate) fn coarse() -> Self {
-        Self { timer: None }
+        Self {
+            timer: None,
+            watched: None,
+        }
+    }
+
+    pub(crate) fn watching(mut self, process: ProcessWatch) -> Self {
+        self.watched = Some(process);
+        self
     }
 }
 
@@ -386,6 +397,19 @@ pub(crate) fn wait(
             return false;
         }
         let remaining = timeout - elapsed;
+        if let Some(process) = &waiter.watched {
+            // The watched process's handle is signalled once it ends, and
+            // stays so: the wait ends at once, unchanged, and the caller
+            // finds out why.
+            let handles = [wake.event.0, process.process.0];
+            let ms = remaining.as_millis().clamp(1, u128::from(INFINITE - 1)) as u32;
+            // SAFETY: both handles are open.
+            let woke = unsafe { WaitForMultipleObjects(2, handles.as_ptr(), 0, ms) };
+            if woke == WAIT_OBJECT_0 + 1 {
+                return word.load(Ordering::Acquire) != seen;
+            }
+            continue;
+        }
         match &waiter.timer {
             Some(timer) => {
                 // Relative due times are negative, in units of 100 ns.

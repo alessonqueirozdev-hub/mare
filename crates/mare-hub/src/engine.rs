@@ -77,6 +77,10 @@ pub struct Engine<D: Device> {
     inputs: Vec<f32>,
     outputs: Vec<f32>,
     local: Vec<Local>,
+    /// The slots woken this cycle, in order, and how many of them, from the
+    /// start, are known to have finished. Allocated once, for every slot.
+    awaited: Vec<u32>,
+    finished: usize,
     report: CycleReport,
     next_frame_time: u64,
     deadline: Duration,
@@ -104,6 +108,8 @@ impl<D: Device> Engine<D> {
             inputs: vec![0.0; config.input_channels as usize * stride],
             outputs: vec![0.0; config.output_channels as usize * stride],
             local: vec![Local::default(); slots],
+            awaited: Vec::with_capacity(slots),
+            finished: 0,
             report: CycleReport::default(),
             next_frame_time: 0,
             deadline: Duration::ZERO,
@@ -186,8 +192,13 @@ impl<D: Device> Engine<D> {
             report,
             inputs,
             stride,
+            awaited,
+            finished,
             ..
         } = self;
+        // Within capacity: there is room for every slot.
+        awaited.clear();
+        *finished = 0;
         for (index, (slot, local)) in shared.slots.iter().zip(local.iter_mut()).enumerate() {
             local.awaited = false;
             let current = slot.phase.load(Ordering::Acquire);
@@ -244,6 +255,7 @@ impl<D: Device> Engine<D> {
             client.go.ring();
             local.woken = cycle;
             local.awaited = true;
+            awaited.push(index as u32);
             report.woken += 1;
         }
         self.in_cycle = true;
@@ -251,19 +263,25 @@ impl<D: Device> Engine<D> {
         Ok(())
     }
 
-    fn all_done(&self) -> bool {
+    /// Whether every client woken this cycle has finished it. Clients are
+    /// checked in the order they were woken, and one known to have finished
+    /// is not checked again, so a cycle costs one check per client plus one
+    /// per wake, however many wakes there are.
+    fn all_done(&mut self) -> bool {
         let cycle = self.report.cycle;
-        self.shared
-            .slots
-            .iter()
-            .zip(&self.local)
-            .filter(|(_, local)| local.awaited)
-            .all(|(slot, _)| {
-                // SAFETY: awaited clients are LIVE, owned by this thread.
-                unsafe { slot.engine() }.is_none_or(|client| {
-                    client.view.control().done_cycle.load(Ordering::Acquire) == cycle
-                })
-            })
+        while let Some(&index) = self.awaited.get(self.finished) {
+            let slot = &self.shared.slots[index as usize];
+            // SAFETY: awaited clients are LIVE or RETIRING, owned by this
+            // thread until it stores RETIRED at a later cycle.
+            let done = unsafe { slot.engine() }.is_none_or(|client| {
+                client.view.control().done_cycle.load(Ordering::Acquire) == cycle
+            });
+            if !done {
+                return false;
+            }
+            self.finished += 1;
+        }
+        true
     }
 
     /// The second half of a cycle: waits for the clients until their

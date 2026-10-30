@@ -332,12 +332,16 @@ pub(crate) fn shared_period(requested: Option<u32>, min: u32, max: u32, fundamen
 }
 
 fn open_shared(device: &IMMDevice, options: &OpenOptions) -> Result<Stream, WasapiError> {
+    if !options.small_shared_periods {
+        return open_shared_default(device);
+    }
     // SAFETY: plain calls on valid objects; the mix format is freed once,
     // after its last use.
     unsafe {
-        let client: IAudioClient3 = device
-            .Activate(CLSCTX_ALL, None)
-            .map_err(|_| WasapiError::Unsupported("IAudioClient3 (Windows 10 or later)"))?;
+        let Ok(client) = device.Activate::<IAudioClient3>(CLSCTX_ALL, None) else {
+            // Before Windows 10: the engine's own period.
+            return open_shared_default(device);
+        };
         let mix = client
             .GetMixFormat()
             .map_err(os("reading the mix format"))?;
@@ -360,6 +364,52 @@ fn open_shared(device: &IMMDevice, options: &OpenOptions) -> Result<Stream, Wasa
         let (sample, period) = result?;
         Ok(Stream {
             client: client.into(),
+            sample,
+            channels: parsed.channels,
+            rate: parsed.rate,
+            period_frames: period,
+        })
+    }
+}
+
+/// Shared mode through `IAudioClient`, at the engine's default period.
+fn open_shared_default(device: &IMMDevice) -> Result<Stream, WasapiError> {
+    // SAFETY: plain calls on valid objects; the mix format is freed once,
+    // after its last use.
+    unsafe {
+        let client: IAudioClient = device
+            .Activate(CLSCTX_ALL, None)
+            .map_err(os("activating the device"))?;
+        let mix = client
+            .GetMixFormat()
+            .map_err(os("reading the mix format"))?;
+        let parsed = parse(mix);
+        let result = (|| {
+            let sample = parsed
+                .sample
+                .ok_or(WasapiError::Unsupported("the device's mix format"))?;
+            let (mut default_hns, mut min_hns) = (0i64, 0i64);
+            client
+                .GetDevicePeriod(Some(&mut default_hns), Some(&mut min_hns))
+                .map_err(os("reading the device's periods"))?;
+            // Event-driven shared mode: a buffer of the default period, and
+            // a periodicity of zero, which means the engine's own.
+            client
+                .Initialize(
+                    windows::Win32::Media::Audio::AUDCLNT_SHAREMODE_SHARED,
+                    AUDCLNT_STREAMFLAGS_EVENTCALLBACK,
+                    default_hns,
+                    0,
+                    mix,
+                    None,
+                )
+                .map_err(os("initialising the shared stream"))?;
+            Ok((sample, hns_to_frames(default_hns, parsed.rate)))
+        })();
+        CoTaskMemFree(Some(mix.cast_const().cast()));
+        let (sample, period) = result?;
+        Ok(Stream {
+            client,
             sample,
             channels: parsed.channels,
             rate: parsed.rate,
@@ -481,6 +531,7 @@ fn open_input(
         mode: options.mode,
         period_frames: Some(period),
         sample_rate: Some(rate),
+        small_shared_periods: options.small_shared_periods,
     };
     let stream = match options.mode {
         Mode::Shared => open_shared(&device, &wanted)?,

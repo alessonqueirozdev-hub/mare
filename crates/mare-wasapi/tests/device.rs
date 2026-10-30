@@ -113,7 +113,10 @@ fn test_endpoint() -> Option<Endpoint> {
 }
 
 fn unique_hub() -> HubName {
-    HubName::new(&format!("w{:x}", current_pid() & 0xFF_FFFF)).unwrap()
+    // Tests in this file run in parallel, each with its own hub.
+    static NEXT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+    let n = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    HubName::new(&format!("w{:x}-{n}", current_pid() & 0xF_FFFF)).unwrap()
 }
 
 #[test]
@@ -148,7 +151,12 @@ fn endpoints_can_be_listed_without_opening_any() {
 /// Opens `endpoint` in `mode`, runs the hub on it with one client writing
 /// silence for about a second, and checks the timing and the heap.
 fn plays_silence(endpoint: &Endpoint, mode: Mode) {
-    let device = WasapiDevice::open(&endpoint.id, &OpenOptions::new(mode)).unwrap();
+    plays_silence_with(endpoint, &OpenOptions::new(mode));
+}
+
+fn plays_silence_with(endpoint: &Endpoint, options: &OpenOptions) {
+    let mode = options.mode;
+    let device = WasapiDevice::open(&endpoint.id, options).unwrap();
     let config = device.config();
     let latency = device.latency();
     eprintln!(
@@ -240,6 +248,17 @@ after: {stats:?}"
 fn the_hub_plays_silence_through_a_shared_device() {
     if let Some(endpoint) = test_endpoint() {
         plays_silence(&endpoint, Mode::Shared);
+    }
+}
+
+#[test]
+fn the_hub_plays_silence_through_a_shared_device_at_the_default_period() {
+    if let Some(endpoint) = test_endpoint() {
+        let options = OpenOptions {
+            small_shared_periods: false,
+            ..OpenOptions::new(Mode::Shared)
+        };
+        plays_silence_with(&endpoint, &options);
     }
 }
 

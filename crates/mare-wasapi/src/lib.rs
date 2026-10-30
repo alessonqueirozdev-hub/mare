@@ -59,6 +59,11 @@ pub struct OpenOptions {
     /// The sample rate wanted, in exclusive mode; `None` keeps the mixer's.
     /// Shared mode always uses the mixer's.
     pub sample_rate: Option<u32>,
+    /// In shared mode, whether to ask for the small periods of
+    /// `IAudioClient3` (Windows 10 and later). Off, or where that interface
+    /// is missing, the stream uses `IAudioClient` and the engine's default
+    /// period (usually 10 ms), and `period_frames` is ignored.
+    pub small_shared_periods: bool,
 }
 
 impl OpenOptions {
@@ -68,6 +73,7 @@ impl OpenOptions {
             mode,
             period_frames: None,
             sample_rate: None,
+            small_shared_periods: true,
         }
     }
 }

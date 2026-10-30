@@ -9,6 +9,10 @@ break the protocol and the API.
 
 ### WASAPI (`mare-wasapi`)
 
+- Shared mode falls back to `IAudioClient` at the engine's default period
+  where `IAudioClient3` is missing, and `OpenOptions::small_shared_periods`
+  can ask for that path.
+
 - `WasapiDevice`, a `mare_hub::Device` for a WASAPI render endpoint,
   event-driven, in exclusive mode (the device's own format, negotiated
   from 32-bit float down to 16-bit integer, and its smallest period, with

@@ -21,7 +21,12 @@
 //! and handed to the hub a period at a time, with any padding or dropping
 //! counted (see [`fifo`]).
 //!
-//! Everything but [`format`] is Windows-only; elsewhere the crate is empty.
+//! Everything but [`format`](mod@format) and [`fifo`] is Windows-only; elsewhere
+//! only they are built.
+
+// The crate's documentation links to its Windows-only items, which do not
+// exist when it is built (and documented) elsewhere.
+#![cfg_attr(not(windows), allow(rustdoc::broken_intra_doc_links))]
 
 pub mod fifo;
 pub mod format;

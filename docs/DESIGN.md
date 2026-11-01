@@ -199,7 +199,10 @@ measured.
 
 - **Manguebyte.** The first client library is a backend of
   `manguebyte-devices`, so every program built on Manguebyte (its standalone
-  plugins, Aratu, Parabolic) speaks MARÉ without changing its code.
+  plugins, Aratu, Parabolic) speaks MARÉ without changing its code (built:
+  `mare-manguebyte`, whose `MareBackend` a `DeviceManager` takes through
+  `with_audio_backend`; Manguebyte's standalone runs on such a manager
+  through `Standalone::start_on`).
 - **Existing DAWs.** DAWs on Windows speak ASIO. An optional bridge, a
   driver DLL that a DAW loads as any ASIO driver and that speaks MARÉ
   underneath, lets them use the hub. Because it implements Steinberg's
@@ -264,7 +267,9 @@ As in Manguebyte, nothing is claimed before its test exists.
    [ADR 0001](adr/0001-drift-correction-by-queue-level.md); followers on
    WASAPI endpoints and hot-plug are next).
 5. MIDI 2.0 on the same clock.
-6. The Manguebyte backend.
+6. The Manguebyte backend (under way: `mare-manguebyte` is built and
+   tested behind a device manager on MARÉ's own hubs; a standalone plugin,
+   Caecilia first, playing through it is next).
 7. The DAW bridge (separate, GPLv3).
 8. Linux and macOS backends.
 

@@ -1,0 +1,24 @@
+[package]
+name = "mare-manguebyte"
+description = "MARÉ as an audio backend of the Manguebyte Audio Framework: programs built on Manguebyte play through a MARÉ hub"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[dependencies]
+mare-client.workspace = true
+mare-sys.workspace = true
+# The framework, at a fixed revision of its public repository. MIDI stays
+# with Manguebyte's device manager, so its MIDI feature is not needed here.
+manguebyte-core = { git = "https://github.com/alessonqueirozdev-hub/manguebyte", rev = "38eb44b228b0a40c5bc5b9f3995f2969648a2261" }
+manguebyte-devices = { git = "https://github.com/alessonqueirozdev-hub/manguebyte", rev = "38eb44b228b0a40c5bc5b9f3995f2969648a2261", default-features = false }
+
+[dev-dependencies]
+mare-hub.workspace = true
+
+[lints]
+workspace = true

@@ -33,6 +33,24 @@ break the protocol and the API.
 - [ADR 0001](docs/adr/0001-drift-correction-by-queue-level.md): why drift
   is corrected by the queue's level, measured finer than a packet.
 
+### Manguebyte backend (`mare-manguebyte`)
+
+- `MareBackend` implements `manguebyte_devices::AudioBackend`: given to
+  `DeviceManager::with_audio_backend`, it lists every running hub it is
+  told of as a device (input and output as its device has them), describes
+  each at the hub's rate and period with up to its device's channels, and
+  plays a stream as a client of the hub, the program's callback on the
+  client's cycle thread at real-time priority. A hub that stops is
+  reported as a lost stream, which the manager restarts when the hub
+  returns. A rate the hub does not run at, or an input and output on two
+  hubs, is refused. Manguebyte is a dependency at a fixed revision of its
+  public repository, without its MIDI feature (MIDI stays with the
+  manager).
+- Tests run only on MARÉ's own hubs, on fake devices: the listing and
+  descriptions, a device manager playing through a hub (every input sample
+  as recorded, the output on the device, the loss reported when the hub
+  stops), refusals, and a cycle thread that never allocates.
+
 ### C and C++ client library (`mare-capi`)
 
 - `mare.dll` (with `mare.dll.lib`), `libmare.so` and `libmare.dylib`, and

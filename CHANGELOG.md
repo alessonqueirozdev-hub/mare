@@ -33,6 +33,21 @@ break the protocol and the API.
 - [ADR 0001](docs/adr/0001-drift-correction-by-queue-level.md): why drift
   is corrected by the queue's level, measured finer than a packet.
 
+### C and C++ client library (`mare-capi`)
+
+- `mare.dll` (with `mare.dll.lib`), `libmare.so` and `libmare.dylib`, and
+  static libraries, export the client side for C: `mare_connect`,
+  `mare_wait_cycle` / `mare_try_cycle` / `mare_run` with a callback, the
+  `mare_cycle_*` accessors for audio and events, real-time promotion, and a
+  status code for every failure. `include/mare_client.h` declares them;
+  `include/mare_client.hpp` wraps them for C++17 (RAII, lambdas, an
+  exception on a failed connection, nothing thrown on the cycle path).
+  The configuration carries its own size, so later versions can grow it.
+- Tests compile a C and a C++ client with Microsoft's compiler on Windows
+  and gcc on Linux and run each against a hub: every input sample arrives
+  as the device recorded it, the outputs reach the device, events reach
+  the hub, and the structures have the sizes Rust gives them.
+
 ### Aggregate device (`mare-hub`)
 
 - `aggregate` makes an `Aggregate`, a `Device` of a master and followers,

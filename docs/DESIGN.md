@@ -207,7 +207,8 @@ measured.
   `manguebyte-pro-io`, and its name does not contain "ASIO" (a Steinberg
   trademark). The protocol and the hub stay MIT or Apache-2.0.
 - **A C API.** A small C library implements the client side, so that any
-  language can join without the Rust code.
+  language can join without the Rust code (built: `mare-capi`, with
+  `include/mare_client.h` and a C++ layer, `include/mare_client.hpp`).
 
 ## Platforms
 

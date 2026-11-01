@@ -1,13 +1,13 @@
-//! Proves that resampling and controlling never touch the heap.
+//! Proves that resampling, controlling and a link never touch the heap.
 //!
-//! The hub's cycle thread runs both, so, as everywhere on that thread, they
+//! The hub's cycle thread runs them, so, as everywhere on that thread, they
 //! must not allocate or free (Manguebyte's ADR 0002). A counting allocator
 //! fails this test if any `push`, `pull`, `set_ratio` or `update` does.
 
 use std::alloc::{GlobalAlloc, Layout, System};
 use std::cell::Cell;
 
-use mare_drift::{ControllerSettings, RatioController, Resampler};
+use mare_drift::{ControllerSettings, LinkSettings, RatioController, Resampler, link};
 
 thread_local! {
     static WATCHING: Cell<bool> = const { Cell::new(false) };
@@ -74,4 +74,27 @@ fn resampling_and_controlling_never_allocate() {
     resampler.reset();
     WATCHING.with(|w| w.set(false));
     assert_eq!(HEAP_CALLS.with(Cell::get), 0);
+}
+
+#[test]
+fn a_link_never_allocates_after_it_is_made() {
+    let (mut producer, mut consumer) = link(LinkSettings::new(2, 48_000, 480, 128));
+    let packet = vec![0.25f32; 480 * 2];
+    let mut out = vec![0.0f32; 128 * 2];
+
+    WATCHING.with(|w| w.set(true));
+    let (mut produced, mut now) = (0.0f64, 0u64);
+    for _ in 0..10_000 {
+        now += 128 * 1_000_000_000 / 48_000;
+        produced += 128.0 * 1.0003;
+        while produced >= 480.0 {
+            producer.push(&packet, now);
+            produced -= 480.0;
+        }
+        consumer.pull(&mut out, now);
+    }
+    let _ = consumer.stats();
+    WATCHING.with(|w| w.set(false));
+    assert_eq!(HEAP_CALLS.with(Cell::get), 0);
+    assert!(consumer.stats().frames_out > 0);
 }

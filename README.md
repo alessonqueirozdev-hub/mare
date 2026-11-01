@@ -27,10 +27,13 @@ It is part of the ecosystem of the
 [Manguebyte Audio Framework](https://github.com/alessonqueirozdev-hub/manguebyte),
 from Recife: every program built on Manguebyte will speak MARÉ.
 
-> **Status: milestone 2.** The shared-memory layout, the client library and
-> a hub tested against fake devices are built and tested on Windows, Linux
-> and macOS (CI). Milestone 3 is under way: a WASAPI device (output, and input beside
-> it), tried by hand on one real device ([docs/HARDWARE.md](docs/HARDWARE.md)). [docs/DESIGN.md](docs/DESIGN.md)
+> **Status: milestones 3, 4 and 6 under way.** The shared-memory layout,
+> the client library (Rust, C and C++), the hub and its drift-corrected
+> aggregate of several devices are built and tested on Windows, Linux and
+> macOS (CI), against fake devices. A WASAPI device (output, and input
+> beside it) has been tried by hand on one real device
+> ([docs/HARDWARE.md](docs/HARDWARE.md)); the `mare` program runs a hub on
+> one, and programs built on Manguebyte play through it. [docs/DESIGN.md](docs/DESIGN.md)
 > is the specification, including what MARÉ is not (not a kernel driver, and
 > not lower latency than the hardware allows);
 > [docs/LAYOUT.md](docs/LAYOUT.md) is the shared memory byte by byte, and
@@ -50,10 +53,27 @@ from Recife: every program built on Manguebyte will speak MARÉ.
 | `mare-capi` | The client library for C and C++: `mare.dll` / `libmare.so` / `libmare.dylib` |
 | `mare-manguebyte` | MARÉ as an audio backend of the Manguebyte Audio Framework |
 | `mare-wasapi` | A WASAPI device, output and duplex input, exclusive or shared (Windows) |
+| `mare-cli` | The `mare` program: lists devices, runs a hub on one, shows running hubs |
 
 ```bash
 cargo test --workspace
 ```
+
+## Running a hub
+
+```bash
+cargo run --release -p mare-cli -- devices
+cargo run --release -p mare-cli -- run --device Realtek
+cargo run --release -p mare-cli -- run --device UMC404HD --exclusive --period 64
+cargo run --release -p mare-cli -- run --null
+```
+
+`mare run` keeps a hub called `main` running until Ctrl+C; programs connect
+to it by that name (`--name` gives another). `--input` opens a capture
+device beside the output, and `--follow` joins further output devices, each
+on its own clock, resampled to the first. `--null` runs a hub on no device,
+on any system, for trying programs without a sound card. `mare help` lists
+every option.
 
 ## Trademarks
 

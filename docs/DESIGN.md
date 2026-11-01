@@ -264,13 +264,14 @@ As in Manguebyte, nothing is claimed before its test exists.
 4. Several devices with drift correction; hot-plug (under way: the
    resampler, the controller and an aggregate device of resampled
    followers are built and tested on fake devices,
-   [ADR 0001](adr/0001-drift-correction-by-queue-level.md); followers on
-   WASAPI endpoints and hot-plug are next).
+   [ADR 0001](adr/0001-drift-correction-by-queue-level.md); `mare run
+   --follow` joins WASAPI endpoints as followers, not yet tried on real
+   hardware; hot-plug is next).
 5. MIDI 2.0 on the same clock.
 6. The Manguebyte backend (under way: `mare-manguebyte` is built, and a
    plugin played by Manguebyte's standalone has run through it on MARÉ's
-   own hubs; a hub program for real devices, and Caecilia playing through
-   it, are next).
+   own hubs; the `mare` program runs a hub on a real device for programs
+   to connect to; Caecilia playing through it is next).
 7. The DAW bridge (separate, GPLv3).
 8. Linux and macOS backends.
 

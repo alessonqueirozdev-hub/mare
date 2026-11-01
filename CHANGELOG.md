@@ -7,6 +7,28 @@ break the protocol and the API.
 
 ## Unreleased
 
+### The `mare` program (`mare-cli`)
+
+- `mare devices` lists the output and input devices, opening none.
+- `mare run` runs a hub on a device until Ctrl+C (or `--seconds`): the
+  system's default output or one named by its id or part of its name
+  (a name that fits several devices is refused, listing them), shared or
+  `--exclusive`, with `--period`, `--rate` and `--clients`. `--input` opens
+  a capture device beside the output; each `--follow` joins another output
+  device to it, on its own clock, resampled, its channels after the first
+  device's. It prints what each device is (format, period, buffer, the
+  driver's stream latency), clients joining and leaving, a follower that
+  stops (the hub carries on without it), a warning if a thread runs at
+  ordinary priority, a status line every second on a terminal, and at the
+  end the counters and each follower's drift, silences and added latency.
+- `mare run --null` runs a hub on no device, silence timed by the system
+  clock, on any system: for trying programs without a sound card.
+- `mare probe` shows a running hub: rate, period, channels, process.
+- Tests run the program itself on its null device (a client joins, plays
+  and leaves; a second hub of the same name is refused; probing), and a
+  session with two fake followers at +300 and −200 ppm; none opens a sound
+  card. Nothing automated runs it on a real device.
+
 ### Drift correction (`mare-drift`)
 
 - `Resampler`: a variable-ratio resampler (Kaiser-windowed sinc, 64 taps,
@@ -165,6 +187,10 @@ break the protocol and the API.
   program in another language would, and check the structures against them.
 
 ### System (`mare-sys`)
+
+- `interrupt_flag`: Ctrl+C, Ctrl+Break and closing the console on Windows,
+  `SIGINT` and `SIGTERM` elsewhere, set a flag instead of ending the
+  process, so that a hub stops cleanly; a second request ends it at once.
 
 - `Doorbell::wait_kind` says how a doorbell's waiter waits: on an event,
   a futex, `os_sync`, or by polling.

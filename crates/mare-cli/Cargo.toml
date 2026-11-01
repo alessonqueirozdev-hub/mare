@@ -1,0 +1,23 @@
+[package]
+name = "mare-cli"
+description = "The mare program: lists audio devices, runs a MARÉ hub on one for programs to play through, and shows running hubs"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[[bin]]
+name = "mare"
+path = "src/main.rs"
+
+[dependencies]
+mare-client.workspace = true
+mare-hub.workspace = true
+mare-sys.workspace = true
+mare-wasapi.workspace = true
+
+[lints]
+workspace = true

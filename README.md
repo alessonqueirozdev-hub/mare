@@ -75,6 +75,12 @@ on its own clock, resampled to the first. `--null` runs a hub on no device,
 on any system, for trying programs without a sound card. `mare help` lists
 every option.
 
+```bash
+cargo run --release -p mare-client --example sine -- --hub main --level -30
+```
+
+plays a quiet sine through a running hub, to hear that it works.
+
 ## Trademarks
 
 ASIO is a trademark and software of Steinberg Media Technologies GmbH. MARÉ

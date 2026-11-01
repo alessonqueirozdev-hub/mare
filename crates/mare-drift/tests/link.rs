@@ -179,3 +179,90 @@ fn a_link_carries_audio_between_real_threads() {
     assert!(clean_pulls > pulls / 2);
     assert!(rms_db < -90.0);
 }
+
+/// Drives a link at matched clocks, 480-frame packets in and 128-frame
+/// periods out, for `seconds`, skipping pushes while `producer_off` says so
+/// and pulls while `consumer_off` does. Returns the level after each pull.
+fn drive(
+    seconds: f64,
+    producer_off: impl Fn(f64) -> bool,
+    consumer_off: impl Fn(f64) -> bool,
+) -> (Vec<(f64, f64)>, mare_drift::LinkStats) {
+    let (mut producer, mut consumer) = link(LinkSettings::new(1, RATE, 480, 128));
+    let packet = vec![0.5f32; 480];
+    let mut out = vec![0.0f32; 128];
+    let (packet_period, pull_period) = (480.0 / f64::from(RATE), 128.0 / f64::from(RATE));
+    let (mut next_packet, mut next_pull) = (packet_period, pull_period);
+    let mut levels = Vec::new();
+    while next_pull < seconds {
+        if next_packet <= next_pull {
+            if !producer_off(next_packet) {
+                producer.push(&packet, (next_packet * 1e9) as u64);
+            }
+            next_packet += packet_period;
+        } else {
+            if !consumer_off(next_pull) {
+                consumer.pull(&mut out, (next_pull * 1e9) as u64);
+                levels.push((next_pull, consumer.stats().level));
+            }
+            next_pull += pull_period;
+        }
+    }
+    (levels, consumer.stats())
+}
+
+#[test]
+fn a_consumer_that_starts_late_starts_at_the_target() {
+    // The producer runs a second before anyone pulls: the queue overflows,
+    // and the consumer throws away all but its target instead of carrying
+    // the surplus as latency.
+    let target = LinkSettings::new(1, RATE, 480, 128).target;
+    let (levels, stats) = drive(4.0, |_| false, |t| t < 1.0);
+    eprintln!(
+        "late start: first level {:.0}, discarded {}, overflowed {}, starved {}",
+        levels[0].1, stats.discarded, stats.overflowed, stats.starved
+    );
+    assert!(stats.overflowed > 0 && stats.discarded > 0);
+    assert_eq!(stats.priming, 0);
+    assert_eq!(stats.starved, 0);
+    assert!(levels.iter().all(|&(_, l)| (l - target).abs() < 600.0));
+}
+
+#[test]
+fn a_consumer_that_stalls_drops_the_surplus_when_it_returns() {
+    let target = LinkSettings::new(1, RATE, 480, 128).target;
+    let (levels, stats) = drive(4.0, |_| false, |t| (2.0..2.3).contains(&t));
+    let after: Vec<f64> = levels
+        .iter()
+        .filter(|(t, _)| *t > 2.3)
+        .map(|l| l.1)
+        .collect();
+    eprintln!(
+        "consumer stall: level on return {:.0}, discarded {}, overflowed {}, starved {}",
+        after[0], stats.discarded, stats.overflowed, stats.starved
+    );
+    assert!(stats.overflowed > 0 && stats.discarded > 0);
+    assert_eq!(stats.starved, 0);
+    assert!(after.iter().all(|l| (l - target).abs() < 600.0));
+}
+
+#[test]
+fn a_queue_that_runs_dry_fills_again_and_holds() {
+    let target = LinkSettings::new(1, RATE, 480, 128).target;
+    let (levels, stats) = drive(6.0, |t| (2.0..2.05).contains(&t), |_| false);
+    let late: Vec<f64> = levels
+        .iter()
+        .filter(|(t, _)| *t > 2.5)
+        .map(|l| l.1)
+        .collect();
+    eprintln!(
+        "producer stall: starved {}, level after {:.0}..{:.0}",
+        stats.starved,
+        late.iter().cloned().fold(f64::MAX, f64::min),
+        late.iter().cloned().fold(f64::MIN, f64::max)
+    );
+    // Silence for the stall, and while the queue fills to its target again,
+    // and none after.
+    assert!(stats.starved > 0 && stats.starved < 8_000);
+    assert!(late.iter().all(|l| (l - target).abs() < 600.0));
+}

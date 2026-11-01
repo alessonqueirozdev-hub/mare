@@ -119,6 +119,7 @@ pub fn link(settings: LinkSettings) -> (LinkProducer, LinkConsumer) {
         controller,
         settings,
         primed: false,
+        started: false,
         stats: LinkStats::default(),
     };
     (LinkProducer { shared }, consumer)
@@ -166,10 +167,13 @@ pub struct LinkStats {
     /// Frames of silence handed out while the queue first filled.
     pub priming: u64,
     /// Frames of silence handed out because the queue ran dry after it had
-    /// filled.
+    /// filled, and while it filled again.
     pub starved: u64,
     /// Frames the producer dropped for want of room.
     pub overflowed: u64,
+    /// Frames thrown away so that the queue started, or started again after
+    /// overflowing, at its target rather than above it.
+    pub discarded: u64,
     /// The estimated drift of the producer's clock against the consumer's,
     /// as a fraction.
     pub drift: f64,
@@ -183,7 +187,11 @@ pub struct LinkConsumer {
     resampler: Resampler,
     controller: RatioController,
     settings: LinkSettings,
+    /// Whether the queue has reached its target since it was made or last
+    /// ran dry.
     primed: bool,
+    /// Whether it ever has.
+    started: bool,
     stats: LinkStats,
 }
 
@@ -209,6 +217,17 @@ impl LinkConsumer {
         s.tail.store(tail.wrapping_add(moved), Ordering::Release);
     }
 
+    /// Throws away up to `frames` of the oldest frames in the queue, and
+    /// returns how many it threw.
+    fn discard(&mut self, frames: usize) -> usize {
+        let s = &*self.shared;
+        let tail = s.tail.load(Ordering::Relaxed);
+        let thrown = frames.min(s.head.load(Ordering::Acquire).wrapping_sub(tail));
+        s.tail.store(tail.wrapping_add(thrown), Ordering::Release);
+        self.stats.discarded += thrown as u64;
+        thrown
+    }
+
     /// The level, in producer frames: what waits in the queue and the
     /// resampler, plus what the producer has made since its last packet.
     fn level(&self, now_ns: u64) -> f64 {
@@ -220,30 +239,52 @@ impl LinkConsumer {
     }
 
     /// Fills `output` (interleaved, `channels` samples a frame) at `now_ns`.
-    /// Until the queue first reaches its target, and whenever it runs dry,
-    /// the frames are silence, counted.
+    ///
+    /// Until the queue first reaches its target the frames are silence,
+    /// counted as priming. If it runs dry, the missing frames are silence and
+    /// so is everything until it reaches its target again, counted as
+    /// starved; nothing was lost, so the audio resumes where it stopped. A
+    /// queue above its target when it first starts, or after the producer
+    /// overflowed it, is cut to the target by throwing away its oldest
+    /// frames: the loop corrects by a thousandth at most, so it would take
+    /// minutes to remove that latency itself.
     pub fn pull(&mut self, output: &mut [f32], now_ns: u64) {
         let c = self.shared.channels;
         let frames = output.len() / c;
-        self.drain();
-        let level = self.level(now_ns);
+        let overflowed = self.shared.overflowed.load(Ordering::Relaxed);
+        let mut level = self.level(now_ns);
+        if !self.started || overflowed != self.stats.overflowed {
+            let surplus = (level - self.settings.target).floor();
+            if surplus >= 1.0 {
+                level -= self.discard(surplus as usize) as f64;
+            }
+        }
         self.stats.level = level;
-        self.stats.overflowed = self.shared.overflowed.load(Ordering::Relaxed);
+        self.stats.overflowed = overflowed;
         if !self.primed {
             if level < self.settings.target {
                 output.fill(0.0);
-                self.stats.priming += frames as u64;
+                if self.started {
+                    self.stats.starved += frames as u64;
+                } else {
+                    self.stats.priming += frames as u64;
+                }
                 return;
             }
             self.primed = true;
+            self.started = true;
         }
+        self.drain();
         let ratio = self.controller.update(level);
         self.resampler.set_ratio(ratio);
         self.stats.drift = self.controller.drift();
         let made = self.resampler.pull(output);
         output[made * c..].fill(0.0);
         self.stats.frames_out += made as u64;
-        self.stats.starved += (frames - made) as u64;
+        if made < frames {
+            self.stats.starved += (frames - made) as u64;
+            self.primed = false;
+        }
     }
 
     /// The counters so far.
@@ -252,9 +293,12 @@ impl LinkConsumer {
     }
 
     /// The position of the next frame handed out, in producer frames since
-    /// the first pushed. For tests that check where audio came from.
+    /// the first pushed, for tests that check where audio came from. It is
+    /// exact except for frames already in the resampler when others were
+    /// thrown away behind them (after an overflow), which it places after
+    /// those.
     pub fn position(&self) -> f64 {
-        self.resampler.position()
+        self.resampler.position() + self.stats.discarded as f64
     }
 
     /// The latency the link adds, in producer frames: the queue's target and

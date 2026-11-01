@@ -25,6 +25,7 @@ name = "mare-hub"
 version = "0.1.0"
 dependencies = [
  "mare-client",
+ "mare-drift",
  "mare-protocol",
  "mare-sys",
 ]

@@ -6,7 +6,8 @@
 //! made by threads that are watching, and fails if a watched cycle makes
 //! any: first with everything on one thread and a fake clock (late clients,
 //! busy clients and events included), then with the hub and its clients on
-//! their own threads, waiting on real doorbells.
+//! their own threads, waiting on real doorbells, and last with an aggregate
+//! device and its follower, both sides of both links.
 
 mod common;
 
@@ -19,7 +20,7 @@ use std::time::Duration;
 use common::{connect, fake_hub, unique_hub};
 use mare_client::{Client, ClientConfig};
 use mare_hub::fake::{FakeDevice, Pacing};
-use mare_hub::{DeviceConfig, HubConfig, SystemClock};
+use mare_hub::{AudioBlock, Clock, Device, DeviceConfig, FakeClock, HubConfig, SystemClock};
 use mare_protocol::ring::UmpEvent;
 
 thread_local! {
@@ -210,6 +211,45 @@ fn the_hub_and_its_clients_on_their_own_threads_never_allocate() {
     }
     stop.store(true, Ordering::Release);
     keeper_thread.join().unwrap();
+}
+
+#[test]
+fn an_aggregate_and_its_follower_never_allocate() {
+    let clock = Arc::new(FakeClock::new());
+    let pacing = Pacing::Fake(Arc::clone(&clock));
+    let master = FakeDevice::new(common::DEVICE, pacing.clone());
+    let follower = FakeDevice::new(
+        DeviceConfig {
+            period_frames: 480,
+            max_frames: 480,
+            ..common::DEVICE
+        },
+        pacing,
+    )
+    .with_skew(300e-6);
+    let (mut hub_side, followers) =
+        mare_hub::aggregate(master, vec![follower], clock as Arc<dyn Clock>).unwrap();
+    let mut follower = followers.into_iter().next().unwrap();
+    let mut inputs = vec![0.0f32; 4 * 128];
+    let mut outputs = vec![0.25f32; 4 * 128];
+    let calls = heap_calls(|| {
+        // Two seconds: 1500 master periods, a follower period every 7.5.
+        for period in 0..1_500 {
+            let frames = hub_side.wait_period().unwrap();
+            hub_side
+                .read(&mut AudioBlock::new(&mut inputs, 4, 128, frames))
+                .unwrap();
+            hub_side
+                .write(&AudioBlock::new(&mut outputs, 4, 128, frames))
+                .unwrap();
+            if period % 15 == 0 || period % 15 == 7 {
+                follower.run_period().unwrap();
+            }
+        }
+    });
+    assert_eq!(calls, 0);
+    assert!(hub_side.capture_stats(0).unwrap().frames_out > 0);
+    assert!(follower.playback_stats().unwrap().frames_out > 0);
 }
 
 #[test]

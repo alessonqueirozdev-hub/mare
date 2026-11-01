@@ -87,6 +87,22 @@ impl<'a> AudioBlock<'a> {
         let start = index * self.stride;
         &mut self.data[start..start + self.frames]
     }
+
+    /// The `count` channels from `first` on, as a block of their own.
+    ///
+    /// # Panics
+    ///
+    /// If they go past the block's last channel.
+    pub fn channels_mut(&mut self, first: usize, count: usize) -> AudioBlock<'_> {
+        assert!(first + count <= self.channels);
+        let start = first * self.stride;
+        AudioBlock {
+            data: &mut self.data[start..start + count * self.stride],
+            channels: count,
+            stride: self.stride,
+            frames: self.frames,
+        }
+    }
 }
 
 /// An audio device the hub drives.
@@ -108,4 +124,22 @@ pub trait Device: Send {
 
     /// Hands the device what to play this period.
     fn write(&mut self, outputs: &AudioBlock<'_>) -> Result<(), DeviceError>;
+}
+
+impl<D: Device + ?Sized> Device for Box<D> {
+    fn config(&self) -> DeviceConfig {
+        (**self).config()
+    }
+
+    fn wait_period(&mut self) -> Result<usize, DeviceError> {
+        (**self).wait_period()
+    }
+
+    fn read(&mut self, inputs: &mut AudioBlock<'_>) -> Result<(), DeviceError> {
+        (**self).read(inputs)
+    }
+
+    fn write(&mut self, outputs: &AudioBlock<'_>) -> Result<(), DeviceError> {
+        (**self).write(outputs)
+    }
 }

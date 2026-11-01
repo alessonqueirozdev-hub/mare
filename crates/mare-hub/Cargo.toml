@@ -10,6 +10,7 @@ keywords.workspace = true
 categories.workspace = true
 
 [dependencies]
+mare-drift.workspace = true
 mare-protocol.workspace = true
 mare-sys.workspace = true
 

@@ -24,6 +24,7 @@
 //! device's output channels the same way. Events a client sends are read and
 //! counted, not yet routed anywhere.
 
+mod aggregate;
 mod clock;
 mod device;
 mod engine;
@@ -42,10 +43,12 @@ use mare_protocol::LayoutError;
 use mare_protocol::registry::{RegistryHeader, RegistryLayout, RegistryView, hub_state};
 use mare_sys::{Doorbell, HubName, ProcessWatch, SharedMemory, current_pid};
 
+pub use aggregate::{Aggregate, Follower, FollowerThread, RateMismatch, aggregate};
 pub use clock::{Clock, FakeClock, SystemClock};
 pub use device::{AudioBlock, Device, DeviceConfig, DeviceError};
 pub use engine::{ClientId, CycleReport, Engine};
 pub use keeper::{CLAIM_GRACE, Housekeeper};
+pub use mare_drift::LinkStats;
 pub use mare_protocol::segment::MAX_FRAMES;
 pub use shared::Stats;
 

@@ -4,7 +4,9 @@
 //! last period it was given to play, so a test can check what the hub mixed.
 //! It keeps time in one of two ways: on a [`FakeClock`], which it moves one
 //! period forward each time the hub asks for a period (no waiting at all), or
-//! in real time, sleeping until each period is due.
+//! in real time, sleeping until each period is due. Its crystal can be made
+//! fast or slow by a fraction ([`FakeDevice::with_skew`]), as a second
+//! device's is against the first's.
 
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -36,6 +38,8 @@ pub struct FakeDevice {
     pacing: Pacing,
     origin: Option<Instant>,
     input: InputFn,
+    /// How fast its clock runs against true time, as a fraction.
+    skew: f64,
     /// Frames handed out so far; the next period starts here.
     frame: u64,
     /// The current period's first frame and length.
@@ -54,6 +58,7 @@ impl FakeDevice {
             pacing,
             origin: None,
             input: silence,
+            skew: 0.0,
             frame: 0,
             period_start: 0,
             period_frames: 0,
@@ -65,6 +70,13 @@ impl FakeDevice {
     /// The same device, recording what `input` says instead.
     pub fn with_input(mut self, input: InputFn) -> Self {
         self.input = input;
+        self
+    }
+
+    /// The same device, its clock `skew` fast (or slow, if negative): at
+    /// 100e-6, its 48 000 frames take 1 s / 1.0001.
+    pub fn with_skew(mut self, skew: f64) -> Self {
+        self.skew = skew;
         self
     }
 
@@ -86,6 +98,10 @@ impl FakeDevice {
     }
 
     fn time_of(&self, frame: u64) -> Duration {
+        if self.skew != 0.0 {
+            let rate = f64::from(self.config.sample_rate) * (1.0 + self.skew);
+            return Duration::from_secs_f64(frame as f64 / rate);
+        }
         let nanos = u128::from(frame) * 1_000_000_000 / u128::from(self.config.sample_rate);
         Duration::from_nanos(nanos as u64)
     }

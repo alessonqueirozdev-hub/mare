@@ -578,3 +578,29 @@ impl Drop for RealtimeThread {
         }
     }
 }
+
+/// Sets the interrupt flag on `SIGINT` or `SIGTERM`; a second signal while
+/// it is set ends the process. Both calls are async-signal-safe.
+extern "C" fn on_signal(_signal: libc::c_int) {
+    if crate::INTERRUPTED.swap(true, std::sync::atomic::Ordering::AcqRel) {
+        // SAFETY: `_exit` is async-signal-safe and ends the process.
+        unsafe { libc::_exit(130) };
+    }
+}
+
+pub(crate) fn install_interrupt_handler() -> io::Result<()> {
+    // SAFETY: a zeroed `sigaction` is valid; the handler is a function that
+    // lives as long as the process, and only touches an atomic.
+    unsafe {
+        let mut action: libc::sigaction = std::mem::zeroed();
+        action.sa_sigaction = on_signal as extern "C" fn(libc::c_int) as libc::sighandler_t;
+        action.sa_flags = libc::SA_RESTART;
+        libc::sigemptyset(&mut action.sa_mask);
+        for signal in [libc::SIGINT, libc::SIGTERM] {
+            if libc::sigaction(signal, &action, null_mut()) != 0 {
+                return Err(io::Error::last_os_error());
+            }
+        }
+    }
+    Ok(())
+}

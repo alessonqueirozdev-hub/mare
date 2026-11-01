@@ -18,6 +18,9 @@ use windows_sys::Win32::Security::{
     ACCESS_ALLOWED_ACE, ACL, DACL_SECURITY_INFORMATION, EqualSid, GetAce, GetTokenInformation,
     PSECURITY_DESCRIPTOR, PSID, SECURITY_ATTRIBUTES, TOKEN_QUERY, TOKEN_USER, TokenUser,
 };
+use windows_sys::Win32::System::Console::{
+    CTRL_BREAK_EVENT, CTRL_C_EVENT, CTRL_CLOSE_EVENT, SetConsoleCtrlHandler,
+};
 use windows_sys::Win32::System::Memory::{
     CreateFileMappingW, FILE_MAP_ALL_ACCESS, MEMORY_BASIC_INFORMATION, MEMORY_MAPPED_VIEW_ADDRESS,
     MapViewOfFile, OpenFileMappingW, PAGE_READWRITE, UnmapViewOfFile, VirtualQuery,
@@ -500,4 +503,33 @@ impl Drop for RealtimeThread {
         // this thread, which the guard cannot leave.
         unsafe { AvRevertMmThreadCharacteristics(self.task) };
     }
+}
+
+/// Sets the interrupt flag on Ctrl+C, Ctrl+Break, or the console closing.
+/// Windows calls it on a thread of its own.
+unsafe extern "system" fn on_console_event(kind: u32) -> windows_sys::core::BOOL {
+    match kind {
+        CTRL_C_EVENT | CTRL_BREAK_EVENT => {
+            // A second request falls through to the default handler, which
+            // ends the process.
+            i32::from(!crate::INTERRUPTED.swap(true, Ordering::AcqRel))
+        }
+        CTRL_CLOSE_EVENT => {
+            crate::INTERRUPTED.store(true, Ordering::Release);
+            // Windows ends the process when this returns; the wait gives
+            // the program time to stop its hub first.
+            std::thread::sleep(Duration::from_secs(2));
+            1
+        }
+        _ => 0,
+    }
+}
+
+pub(crate) fn install_interrupt_handler() -> io::Result<()> {
+    // SAFETY: plain call; the handler is a function that lives as long as
+    // the process.
+    if unsafe { SetConsoleCtrlHandler(Some(on_console_event), 1) } == 0 {
+        return Err(io::Error::last_os_error());
+    }
+    Ok(())
 }

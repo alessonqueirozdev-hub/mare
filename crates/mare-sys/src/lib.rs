@@ -14,6 +14,9 @@
 //! - [`ProcessWatch`]: whether another process has ended, so that the hub
 //!   frees a client that died.
 //!
+//! Besides these, [`interrupt_flag`] turns the user's request to stop a
+//! program (Ctrl+C) into a flag, so that a hub stops cleanly.
+//!
 //! Object names follow [`names`], from a [`HubName`].
 //!
 //! Only [`Doorbell::ring`] and [`Doorbell::wait`] are meant for real-time
@@ -25,7 +28,8 @@
 use std::fmt;
 use std::io;
 use std::ptr::NonNull;
-use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::OnceLock;
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::time::Duration;
 
 #[cfg(unix)]
@@ -362,4 +366,27 @@ impl fmt::Debug for ProcessWatch {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("ProcessWatch").finish_non_exhaustive()
     }
+}
+
+/// Set when the user asks the program to stop.
+static INTERRUPTED: AtomicBool = AtomicBool::new(false);
+
+/// A flag set when the user asks the program to stop: Ctrl+C, Ctrl+Break or
+/// closing its console window on Windows; `SIGINT` or `SIGTERM` elsewhere.
+///
+/// The first call installs the handler, and from then on those requests set
+/// the flag instead of ending the process, so that the program can stop
+/// cleanly. A second request, while the flag is set, ends the process at
+/// once, for a program that does not stop. Closing the console window gives
+/// the program two seconds before Windows ends it.
+pub fn interrupt_flag() -> io::Result<&'static AtomicBool> {
+    static INSTALLED: OnceLock<Option<i32>> = OnceLock::new();
+    match INSTALLED.get_or_init(|| imp::install_interrupt_handler().err().map(os_code)) {
+        None => Ok(&INTERRUPTED),
+        Some(code) => Err(io::Error::from_raw_os_error(*code)),
+    }
+}
+
+fn os_code(error: io::Error) -> i32 {
+    error.raw_os_error().unwrap_or(0)
 }

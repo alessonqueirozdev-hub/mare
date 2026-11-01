@@ -18,6 +18,10 @@
 //! [`create`] makes both, for a caller (a test) that drives them by hand.
 //! [`start`] makes both and runs each on its own thread.
 //!
+//! The hub drives one [`Device`]. Several devices become one through
+//! [`aggregate`]: a master that paces the cycles, and followers on their own
+//! clocks and threads, resampled to the master's.
+//!
 //! The graph is the first version's: every client reads the device's input
 //! channels (channel *n* of the client from channel *n* of the device, and
 //! silence past the device's last), and its outputs are summed into the

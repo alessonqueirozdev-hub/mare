@@ -104,6 +104,12 @@ of the drift (a hundred ppm at 48 kHz is one every 0.2 s).
    −91 to −123 dB RMS against exact sines at fixed and swept ratios; the
    controller holds the queue and estimates the drift over two simulated
    hours at −300 to +500 ppm; a sine crosses the closed loop at −102 dB RMS
-2. [ ] An aggregate device: a master and resampled others, on fake devices
+2. [x] An aggregate device: a master and resampled others, on fake devices.
+   Each follower runs on its own thread and is joined through a lock-free
+   link that stamps each packet's arrival; on fake devices 300 ppm fast and
+   500 ppm slow a sine crosses both ways at −103.5 dB RMS, never starved
 3. [ ] Hot-plug: a device joining and leaving while the hub runs
-4. [ ] Report each device's estimated ratio and the latency it adds
+4. [ ] Report each device's estimated ratio and the latency it adds (the
+   aggregate gives both, per follower and direction; nothing shows them to
+   a user yet)
+5. [ ] Followers on real devices (WASAPI endpoints), tried by hand

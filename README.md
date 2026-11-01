@@ -43,9 +43,9 @@ from Recife: every program built on Manguebyte will speak MARÉ.
 | `mare-protocol` | The shared-memory layout: no dependencies, no standard library |
 | `mare-sys` | Named shared memory, doorbells, process watches, per system |
 | `mare-client` | Connect to a hub and run a cycle each period |
-| `mare-hub` | The hub: the cycle engine, the housekeeper, a fake device |
+| `mare-hub` | The hub: the cycle engine, the housekeeper, an aggregate of several devices, a fake device |
 | `include/mare.h` | The layout in C, checked against the Rust one |
-| `mare-drift` | Drift correction: an adaptive resampler and its controller |
+| `mare-drift` | Drift correction: an adaptive resampler, its controller, and a link between two clocks |
 | `mare-wasapi` | A WASAPI device, output and duplex input, exclusive or shared (Windows) |
 
 ```bash

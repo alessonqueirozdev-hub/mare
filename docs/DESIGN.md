@@ -126,12 +126,15 @@ Manguebyte's ADR 0005, carried between processes.
 ### Several devices
 
 A device that is not the master runs on its own clock, which drifts from the
-master's by parts per million. The hub measures each device's rate against
-the master's over a sliding window and resamples its audio with a
-high-quality adaptive resampler, so that the devices behave as one without
-clicks. The rate estimate, the resampler's added latency and the drift are
-all reported. A device can be added or removed while the hub runs; its ports
-fade in or out and the other devices carry on.
+master's by parts per million. The hub drives it on a thread of its own and
+joins it to the cycle through a queue in each direction, with a
+high-quality adaptive resampler whose ratio a controller sets from the
+queue's level ([ADR 0001](adr/0001-drift-correction-by-queue-level.md)), so
+that the devices behave as one without clicks. Its channels follow the
+master's. The drift estimate and the latency each queue adds are reported.
+A device will be able to join or leave while the hub runs, its ports fading
+in or out while the other devices carry on; today a follower whose device
+fails falls silent and the others carry on.
 
 ### Clients and shared memory
 
@@ -255,9 +258,10 @@ As in Manguebyte, nothing is claimed before its test exists.
    [HARDWARE.md](HARDWARE.md); the UMC404HD and a loopback measurement of
    latency are next).
 4. Several devices with drift correction; hot-plug (under way: the
-   resampler and the controller are built and tested,
-   [ADR 0001](adr/0001-drift-correction-by-queue-level.md); joining them to
-   devices is next).
+   resampler, the controller and an aggregate device of resampled
+   followers are built and tested on fake devices,
+   [ADR 0001](adr/0001-drift-correction-by-queue-level.md); followers on
+   WASAPI endpoints and hot-plug are next).
 5. MIDI 2.0 on the same clock.
 6. The Manguebyte backend.
 7. The DAW bridge (separate, GPLv3).

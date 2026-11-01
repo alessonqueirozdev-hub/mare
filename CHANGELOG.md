@@ -22,8 +22,34 @@ break the protocol and the API.
   of timing error); it follows a clock wandering ±20 ppm and absorbs a
   sudden change of 400 ppm. A sine crossing the closed loop comes out at
   −102 dB RMS against the exact sine: no frame dropped, repeated or moved.
+- `link`: a lock-free single-producer single-consumer queue between two
+  clocks. The producer stamps each packet's arrival; the consumer resamples
+  at its own pace, its ratio set from the level measured finer than a
+  packet. It starts at its target (a consumer that starts late, or returns
+  after an overflow, throws away the oldest frames), hands out counted
+  silence while it is dry and resumes where it stopped. A sine crosses
+  clocks 200 and 400 ppm apart, with up to 0.5 ms of arrival jitter, at
+  −103.5 dB RMS; nothing allocates after it is made.
 - [ADR 0001](docs/adr/0001-drift-correction-by-queue-level.md): why drift
   is corrected by the queue's level, measured finer than a packet.
+
+### Aggregate device (`mare-hub`)
+
+- `aggregate` makes an `Aggregate`, a `Device` of a master and followers,
+  and a `Follower` for each, which `Follower::spawn` runs on a thread of
+  its own at real-time priority. The master paces the hub and its channels
+  come first; each follower's audio crosses through two links, resampled
+  to the master's clock and back. A follower at another sample rate is
+  refused (`RateMismatch`). The drift estimate and added latency of each
+  direction are reported (`capture_stats`, `playback_stats`, and their
+  latencies).
+- On fake devices 300 ppm fast and 500 ppm slow, a sine crosses both ways
+  at −103.5 dB RMS against where it came from, never starved, the drift
+  estimated within 11 ppm in 30 s; a hub runs on an aggregate with its
+  follower on a thread; neither side allocates.
+- `Device` is implemented for `Box<D>`, `AudioBlock::channels_mut` gives a
+  run of a block's channels as a block, and `FakeDevice::with_skew` runs a
+  fake device's clock fast or slow.
 
 ### WASAPI (`mare-wasapi`)
 

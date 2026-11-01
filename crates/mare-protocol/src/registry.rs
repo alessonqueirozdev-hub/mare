@@ -153,7 +153,13 @@ pub struct RegistryControl {
     /// The housekeeper's doorbell: a client adds one when it asks to be
     /// adopted or leaves (layout 0.2; zero and unused before).
     pub keeper_bell: AtomicU32,
-    _pad1: [u8; 44],
+    /// Channels the hub's device records, stored before `RUNNING` (layout
+    /// 0.3; zero, unknown, before).
+    pub device_inputs: AtomicU32,
+    /// Channels the hub's device plays, stored before `RUNNING` (layout
+    /// 0.3; zero, unknown, before).
+    pub device_outputs: AtomicU32,
+    _pad1: [u8; 36],
     /// The hub's doorbell: a client adds one when it finishes a cycle.
     pub hub_bell: AtomicU32,
     _pad2: [u8; 60],

@@ -46,7 +46,7 @@ pub const VERSION_MAJOR: u16 = 0;
 
 /// The minor version of the layout. Minor versions only add meaning to
 /// reserved bytes, so a reader accepts any minor version.
-pub const VERSION_MINOR: u16 = 2;
+pub const VERSION_MINOR: u16 = 3;
 
 /// Every block in a segment starts on a multiple of this many bytes, and the
 /// segment itself must be mapped at such an address.

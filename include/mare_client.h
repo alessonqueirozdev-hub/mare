@@ -84,6 +84,9 @@ typedef struct mare_hub_info {
     uint32_t period_frames; /* frames in each cycle */
     uint32_t max_frames;    /* the longest cycle */
     uint32_t hub_pid;       /* the hub's process id */
+    uint32_t device_inputs;  /* channels the device records (0: unknown) */
+    uint32_t device_outputs; /* channels the device plays (0: unknown) */
+    uint32_t reserved;       /* 0 */
 } mare_hub_info;
 
 /* A Universal MIDI Packet of up to four words, and the frame (on the hub's

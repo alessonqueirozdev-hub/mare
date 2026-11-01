@@ -41,7 +41,8 @@ int main(int argc, char** argv) {
         }
     }();
     mare_hub_info info = client.info();
-    std::printf("hub %u %u %u\n", info.sample_rate, info.period_frames, info.max_frames);
+    std::printf("hub %u %u %u %u %u\n", info.sample_rate, info.period_frames, info.max_frames,
+                info.device_inputs, info.device_outputs);
 
     unsigned long cycles = 0, wrong = 0, sent = 0;
     auto process = [&](mare::Cycle& cycle) {

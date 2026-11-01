@@ -86,7 +86,8 @@ int main(int argc, char **argv) {
         return 4;
     }
     mare_client_info(client, &info);
-    printf("hub %u %u %u\n", info.sample_rate, info.period_frames, info.max_frames);
+    printf("hub %u %u %u %u %u\n", info.sample_rate, info.period_frames, info.max_frames,
+           info.device_inputs, info.device_outputs);
     s.max_frames = info.max_frames;
 
     realtime = mare_promote_current_thread();

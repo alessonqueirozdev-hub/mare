@@ -91,6 +91,12 @@ pub struct MareHubInfo {
     pub max_frames: u32,
     /// The hub's process id.
     pub hub_pid: u32,
+    /// Channels the hub's device records; 0 if the hub does not say.
+    pub device_inputs: u32,
+    /// Channels the hub's device plays; 0 if the hub does not say.
+    pub device_outputs: u32,
+    /// Zero.
+    pub reserved: u32,
 }
 
 /// An event (`mare_event`): a Universal MIDI Packet of up to four words and
@@ -299,6 +305,9 @@ pub unsafe extern "C" fn mare_client_info(
         period_frames: hub.period_frames,
         max_frames: hub.max_frames,
         hub_pid: hub.hub_pid,
+        device_inputs: hub.device_inputs,
+        device_outputs: hub.device_outputs,
+        reserved: 0,
     };
     MARE_OK
 }

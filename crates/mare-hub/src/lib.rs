@@ -219,7 +219,14 @@ pub fn create<D: Device>(
     let budget = period.mul_f64(config.client_budget);
     let engine = Engine::new(Arc::clone(&shared), device, clock, budget)?;
     let keeper = Housekeeper::new(Arc::clone(&shared));
-    view.control()
+    let control = view.control();
+    control
+        .device_inputs
+        .store(device_config.input_channels, Ordering::Relaxed);
+    control
+        .device_outputs
+        .store(device_config.output_channels, Ordering::Relaxed);
+    control
         .hub_state
         .store(hub_state::RUNNING, Ordering::Release);
     Ok((engine, keeper))

@@ -219,7 +219,7 @@ fn run_client(source: &str, cpp: bool) {
     );
     assert_eq!(lines.next().unwrap(), "missing 1 null");
     assert_eq!(lines.next().unwrap(), "bad name 12");
-    assert_eq!(lines.next().unwrap(), "hub 48000 64 128");
+    assert_eq!(lines.next().unwrap(), "hub 48000 64 128 2 2");
     assert!(lines.next().unwrap().starts_with("stopped 9 cycles "));
     assert!(stats.events_received >= 16, "{stats:?}");
     // The last cycle's outputs reached the device, unless the client was

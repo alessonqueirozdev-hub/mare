@@ -41,8 +41,8 @@ use std::time::{Duration, Instant};
 
 use mare_protocol::LayoutError;
 use mare_protocol::registry::{
-    RegistryHeader, RegistryLayout, RegistrySlot, RegistryView, hub_state, reject_reason,
-    slot_state,
+    RegistryControl, RegistryHeader, RegistryLayout, RegistrySlot, RegistryView, hub_state,
+    reject_reason, slot_state,
 };
 use mare_protocol::ring::{RingConsumer, RingProducer, UmpEvent};
 use mare_protocol::segment::{SegmentConfig, SegmentLayout, SegmentView, client_flags, hub_flags};
@@ -96,6 +96,12 @@ pub struct HubInfo {
     pub max_frames: u32,
     /// The hub's process id.
     pub hub_pid: u32,
+    /// Channels the hub's device records; zero if the hub does not say
+    /// (layout 0.2 and earlier). A client may ask for more or fewer: the
+    /// ones past the device's last are silent.
+    pub device_inputs: u32,
+    /// Channels the hub's device plays; zero if the hub does not say.
+    pub device_outputs: u32,
 }
 
 /// Why a client could not connect.
@@ -228,34 +234,63 @@ fn give_up(slot: &RegistrySlot, from: u32) -> bool {
         .is_ok()
 }
 
-impl Client {
-    /// Connects to the hub called `hub`.
-    pub fn connect(hub: &HubName, config: &ClientConfig) -> Result<Self, ConnectError> {
-        let registry = SharedMemory::open(&hub.registry()).map_err(ConnectError::NoHub)?;
-        let mapped = registry.len() as u64;
-        // SAFETY: the mapping lives in `registry`, which the client keeps.
-        let header = unsafe { RegistryHeader::read_from(registry.base(), mapped) }
-            .map_err(ConnectError::BadRegistry)?;
-        // SAFETY: `read_from` checked the control block is mapped.
-        let control = unsafe { RegistryView::control_at(registry.base()) };
-        if control.hub_state.load(Ordering::Acquire) != hub_state::RUNNING {
-            return Err(ConnectError::HubNotRunning);
-        }
-        // Read again now that RUNNING has published it.
-        // SAFETY: as above.
-        let header =
-            unsafe { RegistryHeader::read_from(registry.base(), mapped) }.unwrap_or(header);
-        let layout =
-            RegistryLayout::validate(&header, mapped).map_err(ConnectError::BadRegistry)?;
-        // SAFETY: validated against the mapped length; kept with the mapping.
-        let registry_view = unsafe { RegistryView::from_raw(registry.base(), mapped, layout) }
-            .map_err(ConnectError::BadRegistry)?;
-        let info = HubInfo {
+impl HubInfo {
+    fn read(header: &RegistryHeader, control: &RegistryControl) -> Self {
+        Self {
             sample_rate: header.sample_rate,
             period_frames: header.period_frames,
             max_frames: header.max_frames,
             hub_pid: header.hub_pid,
-        };
+            device_inputs: control.device_inputs.load(Ordering::Relaxed),
+            device_outputs: control.device_outputs.load(Ordering::Relaxed),
+        }
+    }
+}
+
+/// Opens the registry of the hub called `hub`, checks that the hub runs,
+/// and returns the mapping with its header and control block.
+fn open_registry(
+    hub: &HubName,
+) -> Result<(SharedMemory, RegistryHeader, RegistryLayout), ConnectError> {
+    let registry = SharedMemory::open(&hub.registry()).map_err(ConnectError::NoHub)?;
+    let mapped = registry.len() as u64;
+    // SAFETY: the mapping lives in `registry`, returned with the header.
+    let header = unsafe { RegistryHeader::read_from(registry.base(), mapped) }
+        .map_err(ConnectError::BadRegistry)?;
+    // SAFETY: `read_from` checked the control block is mapped.
+    let control = unsafe { RegistryView::control_at(registry.base()) };
+    if control.hub_state.load(Ordering::Acquire) != hub_state::RUNNING {
+        return Err(ConnectError::HubNotRunning);
+    }
+    // Read again now that RUNNING has published it.
+    // SAFETY: as above.
+    let header = unsafe { RegistryHeader::read_from(registry.base(), mapped) }.unwrap_or(header);
+    let layout = RegistryLayout::validate(&header, mapped).map_err(ConnectError::BadRegistry)?;
+    Ok((registry, header, layout))
+}
+
+/// How the hub called `hub` runs, without connecting to it: for a program
+/// that lists the hubs it could use. It maps the hub's registry for a moment
+/// and takes no slot.
+pub fn probe(hub: &HubName) -> Result<HubInfo, ConnectError> {
+    let (registry, header, _) = open_registry(hub)?;
+    // SAFETY: `open_registry` checked the control block is mapped; the
+    // mapping outlives this read.
+    let control = unsafe { RegistryView::control_at(registry.base()) };
+    Ok(HubInfo::read(&header, control))
+}
+
+impl Client {
+    /// Connects to the hub called `hub`.
+    pub fn connect(hub: &HubName, config: &ClientConfig) -> Result<Self, ConnectError> {
+        let (registry, header, layout) = open_registry(hub)?;
+        let mapped = registry.len() as u64;
+        // SAFETY: `open_registry` checked the control block is mapped.
+        let control = unsafe { RegistryView::control_at(registry.base()) };
+        // SAFETY: validated against the mapped length; kept with the mapping.
+        let registry_view = unsafe { RegistryView::from_raw(registry.base(), mapped, layout) }
+            .map_err(ConnectError::BadRegistry)?;
+        let info = HubInfo::read(&header, control);
         let segment_layout = SegmentLayout::new(SegmentConfig {
             input_channels: config.input_channels,
             output_channels: config.output_channels,

@@ -468,3 +468,27 @@ fn a_slot_claimed_by_a_client_that_died_at_once_is_freed() {
     let client = connect(&mut keeper, &hub, &ClientConfig::new("later", 0, 2)).unwrap();
     assert_eq!(client.slot(), 0);
 }
+
+#[test]
+fn a_hub_can_be_probed_without_taking_a_slot() {
+    let name = unique_hub();
+    assert!(matches!(
+        mare_client::probe(&name),
+        Err(ConnectError::NoHub(_))
+    ));
+    let (engine, mut keeper, _clock) = fake_hub(&name, 1, silence);
+    let info = mare_client::probe(&name).unwrap();
+    assert_eq!(
+        (info.sample_rate, info.period_frames, info.max_frames),
+        (DEVICE.sample_rate, DEVICE.period_frames, DEVICE.max_frames)
+    );
+    assert_eq!(
+        (info.device_inputs, info.device_outputs),
+        (DEVICE.input_channels, DEVICE.output_channels)
+    );
+    assert_eq!(info.hub_pid, current_pid());
+    // The only slot is still free: a client takes it.
+    let client = connect(&mut keeper, &name, &ClientConfig::new("after", 1, 1)).unwrap();
+    assert_eq!(client.info(), info);
+    drop((client, engine));
+}

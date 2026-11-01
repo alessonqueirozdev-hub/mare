@@ -117,6 +117,9 @@ break the protocol and the API.
 
 ### Protocol (`mare-protocol`)
 
+- Layout 0.3: the registry's control block says how many channels the
+  hub's device records and plays (`device_inputs` and `device_outputs`,
+  offsets 20 and 24, reserved before; zero means a hub that does not say).
 - Layout 0.2: the registry's control block gives the housekeeper a
   doorbell of its own (`keeper_bell`, offset 16, reserved in 0.1), which a
   client rings when it asks to be adopted or leaves.
@@ -171,6 +174,9 @@ break the protocol and the API.
 
 ### Client (`mare-client`)
 
+- `probe` says how a hub runs (rate, period, its device's channels)
+  without connecting or taking a slot, for a program that lists the hubs
+  it could use; `HubInfo` carries the device's channels.
 - `Client::connect` takes a slot in a hub's registry, creates the client's
   segment and doorbell, and waits to be adopted. `try_cycle`, `wait_cycle`
   and `run` run the client's cycle without allocating: read inputs and

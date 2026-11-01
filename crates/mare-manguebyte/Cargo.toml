@@ -14,11 +14,16 @@ mare-client.workspace = true
 mare-sys.workspace = true
 # The framework, at a fixed revision of its public repository. MIDI stays
 # with Manguebyte's device manager, so its MIDI feature is not needed here.
-manguebyte-core = { git = "https://github.com/alessonqueirozdev-hub/manguebyte", rev = "38eb44b228b0a40c5bc5b9f3995f2969648a2261" }
-manguebyte-devices = { git = "https://github.com/alessonqueirozdev-hub/manguebyte", rev = "38eb44b228b0a40c5bc5b9f3995f2969648a2261", default-features = false }
+manguebyte-core = { git = "https://github.com/alessonqueirozdev-hub/manguebyte", rev = "3369941529918eb87d3e71d3f59aecbbace964c4" }
+manguebyte-devices = { git = "https://github.com/alessonqueirozdev-hub/manguebyte", rev = "3369941529918eb87d3e71d3f59aecbbace964c4", default-features = false }
 
 [dev-dependencies]
 mare-hub.workspace = true
+# A plugin run by Manguebyte's standalone, playing through a hub.
+manguebyte-dsp = { git = "https://github.com/alessonqueirozdev-hub/manguebyte", rev = "3369941529918eb87d3e71d3f59aecbbace964c4" }
+manguebyte-params = { git = "https://github.com/alessonqueirozdev-hub/manguebyte", rev = "3369941529918eb87d3e71d3f59aecbbace964c4" }
+manguebyte-plugin = { git = "https://github.com/alessonqueirozdev-hub/manguebyte", rev = "3369941529918eb87d3e71d3f59aecbbace964c4" }
+manguebyte-standalone = { git = "https://github.com/alessonqueirozdev-hub/manguebyte", rev = "3369941529918eb87d3e71d3f59aecbbace964c4" }
 
 [lints]
 workspace = true

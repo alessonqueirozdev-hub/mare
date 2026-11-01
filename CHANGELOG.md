@@ -49,7 +49,10 @@ break the protocol and the API.
 - Tests run only on MARÉ's own hubs, on fake devices: the listing and
   descriptions, a device manager playing through a hub (every input sample
   as recorded, the output on the device, the loss reported when the hub
-  stops), refusals, and a cycle thread that never allocates.
+  stops), refusals, a cycle thread that never allocates, and a plugin
+  played by Manguebyte's standalone (`Standalone::start_on`) through a hub:
+  303 cycles, none late, the device playing exactly what the plugin made.
+  Pinned to Manguebyte 3369941, the first with `start_on`.
 
 ### C and C++ client library (`mare-capi`)
 

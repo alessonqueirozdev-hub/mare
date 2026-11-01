@@ -267,9 +267,10 @@ As in Manguebyte, nothing is claimed before its test exists.
    [ADR 0001](adr/0001-drift-correction-by-queue-level.md); followers on
    WASAPI endpoints and hot-plug are next).
 5. MIDI 2.0 on the same clock.
-6. The Manguebyte backend (under way: `mare-manguebyte` is built and
-   tested behind a device manager on MARÉ's own hubs; a standalone plugin,
-   Caecilia first, playing through it is next).
+6. The Manguebyte backend (under way: `mare-manguebyte` is built, and a
+   plugin played by Manguebyte's standalone has run through it on MARÉ's
+   own hubs; a hub program for real devices, and Caecilia playing through
+   it, are next).
 7. The DAW bridge (separate, GPLv3).
 8. Linux and macOS backends.
 

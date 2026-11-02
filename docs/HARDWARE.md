@@ -5,19 +5,53 @@ play silence only and never open the Behringer UMC404HD; sound through real
 hardware is tried by hand, with the person at the machine, and each session
 is written down here, newest first.
 
-To try it: `cargo run -p mare-wasapi --example list` lists the outputs
-without opening any, and `cargo run -p mare-wasapi --example tone --
---device <part of a name>` plays a quiet sine (−30 dBFS unless `--level`
-says otherwise, never above −6) and prints what the device and the hub
-reported. Add `--exclusive` for exclusive mode.
+To try it: `mare devices` lists the devices without opening any; `mare
+run --device <part of a name>` keeps a hub on one (add `--exclusive` for
+exclusive mode) and prints what the device reported; and, beside it,
+`cargo run --release -p mare-client --example sine` plays a quiet sine
+through the hub (−30 dBFS unless `--level` says otherwise, never above −6).
+`cargo run -p mare-wasapi --example tone -- --device <part of a name>` does
+both in one program.
 
 ## Machines
 
 | Machine | Processor | System | Outputs |
 |---|---|---|---|
-| Development laptop | Intel Core i3-1215U (6 cores, 8 threads) | Windows 11 Pro 10.0.26200 | Realtek(R) Audio (built in); Behringer UMC404HD (USB, not connected on 2026-10-29) |
+| Development laptop | Intel Core i3-1215U (6 cores, 8 threads) | Windows 11 Pro 10.0.26200 | Realtek(R) Audio (built in); Behringer UMC404HD (USB, not connected on 2026-10-29 or 2026-11-01) |
 
 ## Sessions
+
+### 2026-11-01: by hand, the `mare` program on the Realtek output
+
+With the person at the machine listening, through the laptop's own
+speakers, at a low volume; each step started once they said they were
+ready. Release builds of `mare` and the `sine` example at commit 088f354,
+Rust 1.99.0, each in a terminal tab of its own, the hub stopped with
+Ctrl+C.
+
+1. `mare devices`: one output, "Alto-falantes (2- Realtek(R) Audio)", and
+   one input, its microphone, both the defaults; nothing opened.
+2. `mare run --device Realtek`, shared mode: 32-bit float, 48 kHz, two
+   outputs, period 480 frames (10 ms), buffer 1 056 frames; the driver
+   reports a stream latency of 0. Beside it, `sine` at 440 Hz and −30 dBFS
+   for 5 s: 501 cycles played, none late, its thread at real-time priority.
+   The hub ran 2 436 cycles in 24 s with nothing late or busy, its longest
+   wait 0.33 ms, and printed the client joining and leaving. Ctrl+C stopped
+   it cleanly, with its summary. **Heard: clean.**
+3. `mare run --device Realtek --exclusive`: 24-bit integer in 32-bit
+   containers, 48 kHz, period and buffer 144 frames (3 ms), stream latency
+   144 frames as the driver reports it. The same sine: 1 672 cycles played,
+   none late. The hub ran 5 481 cycles in 16 s, nothing late or busy,
+   longest wait 0.38 ms; Ctrl+C stopped it cleanly. **Heard: clean.**
+
+What it shows: a hub kept by `mare run` on a real device, in both modes,
+plays a client that connects to it by name from another process, with no
+missed cycle, the client's start included (on 2026-10-29 the `tone`
+example, hub and client in one process, missed 48 cycles while starting in
+exclusive mode; here the hub had been running for seconds before the client
+came). What it does not show: the UMC404HD, `--input` and `--follow` on
+real devices, periods below 3 ms, and latency measured with a loopback
+cable.
 
 ### 2026-10-29: by hand, a client that waits to be ready
 

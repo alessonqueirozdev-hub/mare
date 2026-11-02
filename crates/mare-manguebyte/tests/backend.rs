@@ -5,7 +5,7 @@
 //! program built on Manguebyte would, and hears of it when the hub stops.
 
 use std::sync::Arc;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 
 use manguebyte_devices::{
@@ -13,7 +13,7 @@ use manguebyte_devices::{
     DeviceEvent, DeviceIo, DeviceManager, DeviceSetup, Direction, StreamSettings, StreamStatus,
 };
 use mare_hub::fake::{FakeDevice, Pacing};
-use mare_hub::{DeviceConfig, HubConfig, RunningHub, Stats, SystemClock};
+use mare_hub::{DeviceConfig, DeviceLatency, HubConfig, RunningHub, Stats, SystemClock};
 use mare_manguebyte::{HOST_NAME, MareBackend, device_id};
 use mare_sys::{HubName, current_pid};
 
@@ -28,6 +28,12 @@ fn levels(channel: u32, _frame: u64) -> f32 {
     0.25 * (channel + 1) as f32
 }
 
+/// What the hubs' devices report.
+const LATENCY: DeviceLatency = DeviceLatency {
+    input_frames: 96,
+    output_frames: 160,
+};
+
 fn hub(name: &HubName, inputs: u32, outputs: u32) -> RunningHub<FakeDevice> {
     let device = FakeDevice::new(
         DeviceConfig {
@@ -39,7 +45,8 @@ fn hub(name: &HubName, inputs: u32, outputs: u32) -> RunningHub<FakeDevice> {
         },
         Pacing::RealTime,
     )
-    .with_input(levels);
+    .with_input(levels)
+    .with_latency(LATENCY);
     mare_hub::start(
         &HubConfig::new(name.clone()),
         device,
@@ -121,7 +128,10 @@ fn a_device_manager_plays_through_a_hub_and_hears_when_it_stops() {
 
     let wrong = Arc::new(AtomicUsize::new(0));
     let blocks = Arc::new(AtomicUsize::new(0));
-    let (wrong_in, blocks_in) = (Arc::clone(&wrong), Arc::clone(&blocks));
+    // The latencies the program was told, in frames, as f64 bits.
+    let heard = Arc::new([AtomicU64::new(0), AtomicU64::new(0)]);
+    let (wrong_in, blocks_in, heard_in) =
+        (Arc::clone(&wrong), Arc::clone(&blocks), Arc::clone(&heard));
     let report = manager
         .start(
             &DeviceSetup::default().with_input(DeviceChoice::Default),
@@ -139,6 +149,13 @@ fn a_device_manager_plays_through_a_hub_and_hears_when_it_stops() {
                     }
                 }
                 blocks_in.fetch_add(1, Ordering::Relaxed);
+                let frames = [
+                    io.info.input_latency_frames(),
+                    io.info.output_latency_frames(),
+                ];
+                for (store, frames) in heard_in.iter().zip(frames) {
+                    store.store(frames.unwrap_or(-1.0).to_bits(), Ordering::Relaxed);
+                }
             },
         )
         .unwrap();
@@ -161,6 +178,13 @@ fn a_device_manager_plays_through_a_hub_and_hears_when_it_stops() {
     assert!(error.is_none());
     assert_eq!(wrong.load(Ordering::Relaxed), 0);
     assert!(blocks.load(Ordering::Relaxed) >= 300);
+    // The program heard the device's latencies: the output's as the hub
+    // published it, the input's at least as long (the device manager may
+    // add a reserve of its own between input and output). A `Duration`
+    // keeps whole nanoseconds, a few millionths of a frame.
+    let [input, output] = [0, 1].map(|i| f64::from_bits(heard[i].load(Ordering::Relaxed)));
+    assert!((output - 160.0).abs() < 1e-3, "output latency {output}");
+    assert!(input >= 96.0 - 1e-3, "input latency {input}");
     // The last cycle's mix is the program's output, unless it was late for
     // it, which a loaded machine allows.
     if stats.late == 0 {

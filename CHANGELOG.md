@@ -7,6 +7,37 @@ break the protocol and the API.
 
 ## Unreleased
 
+### Latency, said to programs (layout 0.4)
+
+- The registry's control block says the device's latency: frames from a
+  cycle's first input frame entering the device to the cycle's start, and
+  from the cycle's start to its first output frame leaving it, with where
+  the figures come from (unknown, worked out from the driver's figures, or
+  measured). The hub may change them while it runs. `include/mare.h` and
+  `docs/LAYOUT.md` follow.
+- `Device::latency` (`DeviceLatency`): what a device reports, published by
+  the hub when it starts; `RunningHub::set_latency` publishes another (a
+  measured figure, say) and `RunningHub::latency` reads it back. An
+  aggregate reports its master's. `FakeDevice::with_latency` for tests.
+- The WASAPI device works an estimate out of WASAPI's figures: in exclusive
+  mode the buffer (or the driver's stream latency, if longer), in shared
+  mode what is still queued when the hub writes plus the driver's stream
+  latency, and for an input its capture buffer plus the queue's cushion.
+  What the converters and the bus add is not in it. Its parts are now
+  `WasapiDevice::latency_parts`.
+- `mare_client`: `HubInfo::latency` and `Client::latency` (live), as a
+  `HubLatency` with its `LatencySource`.
+- The C library: `mare_client_latency` and `mare_latency` (ABI 0.2). The
+  library is now `mareclient` (`mareclient.dll`, `libmareclient.so`), so
+  that its files no longer collide with the `mare` program's.
+- `mare-manguebyte` hands the latencies to the program in each block's
+  `CallbackInfo` (`output_latency`, `input_latency`), read every cycle
+  without allocating, so a change reaches it at once.
+- `mare run --output-latency N --input-latency N` publishes figures
+  measured with a loopback cable in place of the estimate (both are needed
+  when the hub has inputs); `mare run` and `mare probe` show the latency and
+  where it comes from.
+
 ### The `mare` program (`mare-cli`)
 
 - `mare devices` lists the output and input devices, opening none.
@@ -78,7 +109,9 @@ break the protocol and the API.
 
 ### C and C++ client library (`mare-capi`)
 
-- `mare.dll` (with `mare.dll.lib`), `libmare.so` and `libmare.dylib`, and
+- `mareclient.dll` (with `mareclient.dll.lib`), `libmareclient.so` and
+  `libmareclient.dylib` (not `mare`, which names the program, nor
+  `mare_client`, which names the Rust client), and
   static libraries, export the client side for C: `mare_connect`,
   `mare_wait_cycle` / `mare_try_cycle` / `mare_run` with a callback, the
   `mare_cycle_*` accessors for audio and events, real-time promotion, and a

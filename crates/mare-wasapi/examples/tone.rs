@@ -79,7 +79,7 @@ fn main() {
         config.sample_rate,
         config.output_channels
     );
-    let latency = device.latency();
+    let latency = device.latency_parts();
     let ms = |frames: u32| f64::from(frames) * 1000.0 / f64::from(config.sample_rate);
     println!(
         "period {} frames ({:.2} ms), buffer {} frames ({:.2} ms), stream latency {} frames ({:.2} ms, as the driver reports it)",

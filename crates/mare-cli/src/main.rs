@@ -11,7 +11,7 @@ use mare_cli::args::{NULL_PERIOD, NULL_RATE, USAGE};
 use mare_cli::{AnyDevice, Command, DeviceChoice, Report, RunOptions, Session, show};
 use mare_client::ConnectError;
 use mare_hub::fake::{FakeDevice, Pacing};
-use mare_hub::{DeviceConfig, HubConfig};
+use mare_hub::{DeviceConfig, DeviceLatency, HubConfig, LatencySource};
 use mare_sys::HubName;
 
 fn main() -> ExitCode {
@@ -117,6 +117,25 @@ fn run(options: &RunOptions) -> ExitCode {
             n => format!(" (the first device's, then {n} followers')"),
         }
     );
+    if let Some((input, output)) = options.measured_latency {
+        if input.is_none() && inputs > 0 {
+            session.stop();
+            return fail(
+                "the hub has inputs: give --input-latency with --output-latency, \
+                 both from the measurement",
+            );
+        }
+        session.set_latency(
+            DeviceLatency {
+                input_frames: input.unwrap_or(0),
+                output_frames: output,
+            },
+            LatencySource::Measured,
+        );
+    }
+    if let Ok(info) = mare_client::probe(&options.hub) {
+        println!("{}", show::latency(&info.latency, device.sample_rate));
+    }
     println!("programs connect to it by its name; Ctrl+C stops it");
 
     let started = Instant::now();
@@ -321,7 +340,7 @@ fn describe(device: &mare_wasapi::WasapiDevice) {
     use mare_hub::Device;
 
     let config = device.config();
-    let latency = device.latency();
+    let latency = device.latency_parts();
     let ms = |frames: u32| show::ms(f64::from(frames), config.sample_rate);
     println!(
         "{}: {:?}, {:?}, {} Hz, {} outputs; period {} frames ({:.2} ms), buffer {} frames \

@@ -49,10 +49,11 @@ use mare_sys::{Doorbell, HubName, ProcessWatch, SharedMemory, current_pid};
 
 pub use aggregate::{Aggregate, Follower, FollowerThread, RateMismatch, aggregate};
 pub use clock::{Clock, FakeClock, SystemClock};
-pub use device::{AudioBlock, Device, DeviceConfig, DeviceError};
+pub use device::{AudioBlock, Device, DeviceConfig, DeviceError, DeviceLatency};
 pub use engine::{ClientId, CycleReport, Engine};
 pub use keeper::{CLAIM_GRACE, Housekeeper};
 pub use mare_drift::LinkStats;
+pub use mare_protocol::registry::LatencySource;
 pub use mare_protocol::segment::MAX_FRAMES;
 pub use shared::Stats;
 
@@ -217,6 +218,7 @@ pub fn create<D: Device>(
             / u64::from(device_config.sample_rate),
     );
     let budget = period.mul_f64(config.client_budget);
+    shared.publish_latency(device.latency(), LatencySource::Reported);
     let engine = Engine::new(Arc::clone(&shared), device, clock, budget)?;
     let keeper = Housekeeper::new(Arc::clone(&shared));
     let control = view.control();
@@ -307,6 +309,18 @@ impl<D: Device> RunningHub<D> {
     /// started, and always false where MARÉ cannot raise it yet.
     pub fn is_realtime(&self) -> bool {
         self.realtime.load(Ordering::Acquire)
+    }
+
+    /// Publishes another latency for the device, measured or reported: a
+    /// figure measured with a loopback cable, say, in place of the driver's.
+    /// Clients read it at once; zero is unknown.
+    pub fn set_latency(&self, latency: DeviceLatency, source: LatencySource) {
+        self.shared.publish_latency(latency, source);
+    }
+
+    /// The latency published to clients, and where it comes from.
+    pub fn latency(&self) -> (DeviceLatency, LatencySource) {
+        self.shared.latency()
     }
 
     /// Whether the cycle thread has stopped by itself (its device failed).

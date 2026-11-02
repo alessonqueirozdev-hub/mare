@@ -1,6 +1,6 @@
 # MARÉ: the shared-memory layout
 
-This is the byte-level layout of layout version 0.3, as `mare-protocol`
+This is the byte-level layout of layout version 0.4, as `mare-protocol`
 implements it in Rust and [`include/mare.h`](../include/mare.h) in C.
 `crates/mare-protocol/tests/layout.rs` checks the Rust structures against
 these tables, and reads and writes segments through these offsets alone, as
@@ -58,9 +58,15 @@ Control:
 | 16 | atomic `u32` | the housekeeper's doorbell (since 0.2) |
 | 20 | atomic `u32` | channels the hub's device records (since 0.3; 0 is unknown) |
 | 24 | atomic `u32` | channels the hub's device plays (since 0.3; 0 is unknown) |
+| 28 | atomic `u32` | input latency: frames from when a cycle's first input frame reached the device to the cycle's start (since 0.4; 0 is unknown) |
+| 32 | atomic `u32` | output latency: frames from a cycle's start until its first output frame leaves the device (since 0.4; 0 is unknown) |
+| 36 | atomic `u32` | where the latencies come from: 0 unknown, 1 worked out from the driver's figures, 2 measured (since 0.4) |
 | 64 | atomic `u32` | the hub's doorbell (cycles finished) |
 
 A client reads the hub state first, and trusts the header only once it is 1.
+The latencies may change while the hub runs (a measured figure given to it,
+another device); each is a whole value, but the three are not stored
+together, so a reader that catches a change may see one old and one new.
 
 Slot:
 

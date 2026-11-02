@@ -50,7 +50,7 @@ from Recife: every program built on Manguebyte will speak MARÉ.
 | `include/mare.h` | The layout in C, checked against the Rust one |
 | `include/mare_client.h`, `mare_client.hpp` | The client library's interface, for C and C++17 |
 | `mare-drift` | Drift correction: an adaptive resampler, its controller, and a link between two clocks |
-| `mare-capi` | The client library for C and C++: `mare.dll` / `libmare.so` / `libmare.dylib` |
+| `mare-capi` | The client library for C and C++: `mareclient.dll` / `libmareclient.so` / `libmareclient.dylib` |
 | `mare-manguebyte` | MARÉ as an audio backend of the Manguebyte Audio Framework |
 | `mare-wasapi` | A WASAPI device, output and duplex input, exclusive or shared (Windows) |
 | `mare-cli` | The `mare` program: lists devices, runs a hub on one, shows running hubs |

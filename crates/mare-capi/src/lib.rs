@@ -1,7 +1,8 @@
 //! MARÉ's client library for C and C++.
 //!
-//! This crate builds `mare.dll` (with its import library `mare.dll.lib`) on
-//! Windows, `libmare.so` on Linux and `libmare.dylib` on macOS, plus static
+//! This crate builds `mareclient.dll` (with its import library
+//! `mareclient.dll.lib`) on Windows, `libmareclient.so` on Linux and
+//! `libmareclient.dylib` on macOS, plus static
 //! libraries, exporting the functions `include/mare_client.h` declares:
 //! connect to a hub, run its cycles from a callback, read and write audio,
 //! and send and receive events. `include/mare_client.hpp` wraps them for
@@ -23,7 +24,15 @@ use mare_sys::{HubName, RealtimeThread};
 /// The version of the C interface: the major version in the high 16 bits,
 /// the minor in the low. A program built against a header of another major
 /// version must not use the library.
-pub const MARE_ABI_VERSION: u32 = 0x0000_0001;
+pub const MARE_ABI_VERSION: u32 = 0x0000_0002;
+
+/// Nobody has said what the hub's latency is (`mare_latency::source`).
+pub const MARE_LATENCY_UNKNOWN: u32 = 0;
+/// The latency was worked out from the figures the device's driver
+/// reported.
+pub const MARE_LATENCY_REPORTED: u32 = 1;
+/// The latency was measured, and given to the hub.
+pub const MARE_LATENCY_MEASURED: u32 = 2;
 
 /// The call succeeded (and, for a cycle call, the cycle ran).
 pub const MARE_OK: i32 = 0;
@@ -77,6 +86,23 @@ pub struct MareClientConfig {
     pub reserved: u32,
     /// A name for people to read: UTF-8, at most 64 bytes, nul-terminated.
     pub name: *const c_char,
+}
+
+/// The hub's latency (`mare_latency`).
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct MareLatency {
+    /// Frames from when the first input frame of a cycle reached the
+    /// device's input to the cycle's start; 0 if unknown.
+    pub input_frames: u32,
+    /// Frames from a cycle's start until its first output frame leaves the
+    /// device; 0 if unknown.
+    pub output_frames: u32,
+    /// `MARE_LATENCY_UNKNOWN`, `MARE_LATENCY_REPORTED` or
+    /// `MARE_LATENCY_MEASURED`.
+    pub source: u32,
+    /// Zero.
+    pub reserved: u32,
 }
 
 /// How the hub runs (`mare_hub_info`).
@@ -307,6 +333,33 @@ pub unsafe extern "C" fn mare_client_info(
         hub_pid: hub.hub_pid,
         device_inputs: hub.device_inputs,
         device_outputs: hub.device_outputs,
+        reserved: 0,
+    };
+    MARE_OK
+}
+
+/// Stores the hub's latency now in `*latency`. The hub may change it while
+/// it runs; call this off the cycle, from time to time, to follow it.
+///
+/// # Safety
+///
+/// `client` is a connected client and `latency` points to a writable
+/// `mare_latency`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mare_client_latency(
+    client: *const MareClient,
+    latency: *mut MareLatency,
+) -> i32 {
+    // SAFETY: the caller's guarantee.
+    let (Some(client), Some(latency)) = (unsafe { client.as_ref() }, unsafe { latency.as_mut() })
+    else {
+        return MARE_BAD_ARGUMENT;
+    };
+    let now = client.0.latency();
+    *latency = MareLatency {
+        input_frames: now.input_frames,
+        output_frames: now.output_frames,
+        source: now.source.raw(),
         reserved: 0,
     };
     MARE_OK

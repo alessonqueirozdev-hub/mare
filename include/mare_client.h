@@ -3,8 +3,9 @@
  *
  * SPDX-License-Identifier: MIT OR Apache-2.0
  *
- * Link against `mare` (mare.dll.lib and mare.dll on Windows, libmare.so on
- * Linux, libmare.dylib on macOS), built by the `mare-capi` crate.
+ * Link against `mareclient` (mareclient.dll.lib and mareclient.dll on
+ * Windows, libmareclient.so on Linux, libmareclient.dylib on macOS), built
+ * by the `mare-capi` crate.
  *
  * A client connects to a running hub by name, then runs one cycle each
  * period from a callback: it reads the hub's audio from its inputs, writes
@@ -40,7 +41,7 @@ extern "C" {
 
 /* The version of this interface: major in the high 16 bits, minor in the
  * low. A library whose major version differs must not be used. */
-#define MARE_CLIENT_ABI_VERSION 0x00000001u
+#define MARE_CLIENT_ABI_VERSION 0x00000002u
 #define MARE_CLIENT_ABI_MAJOR(v) ((v) >> 16)
 
 /* What every call returns. */
@@ -89,6 +90,21 @@ typedef struct mare_hub_info {
     uint32_t reserved;       /* 0 */
 } mare_hub_info;
 
+/* Where a hub's latency comes from (the same values as mare.h's). */
+#ifndef MARE_LATENCY_UNKNOWN
+#define MARE_LATENCY_UNKNOWN 0u  /* nobody has said; the latencies are 0 */
+#define MARE_LATENCY_REPORTED 1u /* worked out from the driver's figures */
+#define MARE_LATENCY_MEASURED 2u /* measured, and given to the hub */
+#endif
+
+/* The hub's latency, in frames (since ABI 0.2). */
+typedef struct mare_latency {
+    uint32_t input_frames;  /* a cycle's first input frame entering the device to the cycle's start (0: unknown) */
+    uint32_t output_frames; /* a cycle's start to its first output frame leaving the device (0: unknown) */
+    uint32_t source;        /* MARE_LATENCY_* */
+    uint32_t reserved;      /* 0 */
+} mare_latency;
+
 /* A Universal MIDI Packet of up to four words, and the frame (on the hub's
  * clock) it belongs to. */
 typedef struct mare_event {
@@ -117,6 +133,11 @@ void mare_leave(mare_client *client);
 
 /* How the hub runs. */
 int mare_client_info(const mare_client *client, mare_hub_info *info);
+
+/* Stores the hub's latency now in `*latency`. The hub may change it while it
+ * runs; call this off the cycle, from time to time, to follow it (since ABI
+ * 0.2). */
+int mare_client_latency(const mare_client *client, mare_latency *latency);
 
 /* The last cycle this client finished (0 before the first). */
 uint64_t mare_client_last_cycle(const mare_client *client);

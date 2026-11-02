@@ -54,6 +54,7 @@ int main(int argc, char **argv) {
     mare_client_config config;
     mare_client *client = NULL;
     mare_hub_info info;
+    mare_latency latency;
     mare_realtime *realtime;
     state s = {0, 0, 0, 0};
     int status;
@@ -88,6 +89,8 @@ int main(int argc, char **argv) {
     mare_client_info(client, &info);
     printf("hub %u %u %u %u %u\n", info.sample_rate, info.period_frames, info.max_frames,
            info.device_inputs, info.device_outputs);
+    mare_client_latency(client, &latency);
+    printf("latency %u %u %u\n", latency.input_frames, latency.output_frames, latency.source);
     s.max_frames = info.max_frames;
 
     realtime = mare_promote_current_thread();

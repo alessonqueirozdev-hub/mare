@@ -10,9 +10,9 @@ keywords.workspace = true
 categories.workspace = true
 
 [lib]
-# `mare.dll` and `mare.dll.lib` on Windows, `libmare.so` on Linux,
-# `libmare.dylib` on macOS, and the static libraries beside them.
-name = "mare"
+# `mareclient.dll` and `mareclient.dll.lib` on Windows, `libmareclient.so`
+# on Linux, `libmareclient.dylib` on macOS, and the static libraries beside them.
+name = "mareclient"
 crate-type = ["cdylib", "staticlib", "rlib"]
 
 [dependencies]

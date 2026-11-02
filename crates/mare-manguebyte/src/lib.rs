@@ -263,7 +263,13 @@ impl Running {
                 let sample_rate = f64::from(info.sample_rate);
                 let origin = Instant::now();
                 let _promoted = mare_sys::promote_current_thread().ok();
+                // The hub's latency, which it may change while it runs: two
+                // loads a cycle, no allocation.
+                let seconds = |frames: u32| {
+                    (frames > 0).then(|| Duration::from_secs_f64(f64::from(frames) / sample_rate))
+                };
                 while !stopping.load(Ordering::Acquire) {
+                    let latency = client.latency();
                     let ran = client.wait_cycle(Duration::from_millis(100), |cycle| {
                         let frames = cycle.frames();
                         input.set_num_frames(frames);
@@ -273,11 +279,14 @@ impl Running {
                                 input.channel_mut(channel).copy_from_slice(samples);
                             }
                         }
+                        // The latencies count from the cycle's start, a
+                        // moment before the client woke and read the time.
                         let timing = CallbackInfo {
                             frame: cycle.frame_time(),
                             sample_rate,
                             stream_time: origin.elapsed(),
-                            ..CallbackInfo::default()
+                            output_latency: seconds(latency.output_frames),
+                            input_latency: seconds(latency.input_frames),
                         };
                         callback.process(&mut input, &mut output, &timing);
                         for channel in 0..format.output_channels {

@@ -12,7 +12,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use crate::clock::FakeClock;
-use crate::device::{AudioBlock, Device, DeviceConfig, DeviceError};
+use crate::device::{AudioBlock, Device, DeviceConfig, DeviceError, DeviceLatency};
 
 /// How a fake device keeps time.
 #[derive(Clone, Debug)]
@@ -40,6 +40,7 @@ pub struct FakeDevice {
     input: InputFn,
     /// How fast its clock runs against true time, as a fraction.
     skew: f64,
+    latency: DeviceLatency,
     /// Frames handed out so far; the next period starts here.
     frame: u64,
     /// The current period's first frame and length.
@@ -59,6 +60,7 @@ impl FakeDevice {
             origin: None,
             input: silence,
             skew: 0.0,
+            latency: DeviceLatency::default(),
             frame: 0,
             period_start: 0,
             period_frames: 0,
@@ -70,6 +72,12 @@ impl FakeDevice {
     /// The same device, recording what `input` says instead.
     pub fn with_input(mut self, input: InputFn) -> Self {
         self.input = input;
+        self
+    }
+
+    /// The same device, reporting `latency`.
+    pub fn with_latency(mut self, latency: DeviceLatency) -> Self {
+        self.latency = latency;
         self
     }
 
@@ -110,6 +118,10 @@ impl FakeDevice {
 impl Device for FakeDevice {
     fn config(&self) -> DeviceConfig {
         self.config
+    }
+
+    fn latency(&self) -> DeviceLatency {
+        self.latency
     }
 
     fn wait_period(&mut self) -> Result<usize, DeviceError> {

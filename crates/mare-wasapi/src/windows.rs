@@ -2,7 +2,7 @@
 
 use std::fmt;
 
-use mare_hub::{AudioBlock, Device, DeviceConfig, DeviceError};
+use mare_hub::{AudioBlock, Device, DeviceConfig, DeviceError, DeviceLatency};
 use windows::Win32::Devices::FunctionDiscovery::PKEY_Device_FriendlyName;
 use windows::Win32::Foundation::{CloseHandle, HANDLE, WAIT_OBJECT_0};
 use windows::Win32::Media::Audio::{
@@ -303,7 +303,7 @@ impl fmt::Debug for WasapiDevice {
             .field("sample", &self.sample)
             .field("channels", &self.channels)
             .field("sample_rate", &self.sample_rate)
-            .field("latency", &self.latency())
+            .field("latency", &self.latency_parts())
             .finish_non_exhaustive()
     }
 }
@@ -771,7 +771,7 @@ impl WasapiDevice {
     }
 
     /// What the device's latency is made of, as WASAPI reports it.
-    pub fn latency(&self) -> Latency {
+    pub fn latency_parts(&self) -> Latency {
         Latency {
             period_frames: self.period_frames,
             buffer_frames: self.buffer_frames,
@@ -781,6 +781,37 @@ impl WasapiDevice {
 }
 
 impl Device for WasapiDevice {
+    /// An estimate from WASAPI's figures, which leave out what the
+    /// converters, the bus and parts of the driver add:
+    ///
+    /// - output, exclusive mode: the buffer the device plays while the hub
+    ///   fills the next one, or the stream latency the driver reports if
+    ///   that is longer;
+    /// - output, shared mode: what is still queued when the hub writes (the
+    ///   buffer less the period it fills), plus the stream latency the
+    ///   driver reports for the system mixer;
+    /// - input: the capture buffer a frame waits in before it is handed
+    ///   over, plus the period of cushion the input queue keeps (see
+    ///   [`fifo`](crate::fifo)).
+    ///
+    /// Measure the real figures with a loopback cable.
+    fn latency(&self) -> DeviceLatency {
+        let output_frames = match self.mode {
+            Mode::Exclusive => self.buffer_frames.max(self.stream_latency_frames),
+            Mode::Shared => {
+                self.buffer_frames.saturating_sub(self.period_frames) + self.stream_latency_frames
+            }
+        };
+        let input_frames = self
+            .input
+            .as_ref()
+            .map_or(0, |input| input.buffer_frames + self.period_frames);
+        DeviceLatency {
+            input_frames,
+            output_frames,
+        }
+    }
+
     fn config(&self) -> DeviceConfig {
         DeviceConfig {
             sample_rate: self.sample_rate,

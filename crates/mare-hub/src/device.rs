@@ -17,6 +17,25 @@ pub struct DeviceConfig {
     pub output_channels: u32,
 }
 
+/// A device's latency, in frames at its sample rate. Zero is unknown.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct DeviceLatency {
+    /// Frames from when the first input frame of a period reached the
+    /// device's input to the period's start (when
+    /// [`Device::wait_period`] returns).
+    pub input_frames: u32,
+    /// Frames from a period's start until its first output frame leaves the
+    /// device.
+    pub output_frames: u32,
+}
+
+impl DeviceLatency {
+    /// Whether neither latency is known.
+    pub fn is_unknown(&self) -> bool {
+        self.input_frames == 0 && self.output_frames == 0
+    }
+}
+
 /// A device stopped working.
 #[derive(Debug)]
 #[non_exhaustive]
@@ -124,6 +143,14 @@ pub trait Device: Send {
 
     /// Hands the device what to play this period.
     fn write(&mut self, outputs: &AudioBlock<'_>) -> Result<(), DeviceError>;
+
+    /// The device's latency as its driver reports it, worked out from
+    /// figures that leave out whatever the driver does not count (zero
+    /// where it does not know). The hub publishes it to its clients when it
+    /// starts. Called from any thread but the cycle thread's real-time path.
+    fn latency(&self) -> DeviceLatency {
+        DeviceLatency::default()
+    }
 }
 
 impl<D: Device + ?Sized> Device for Box<D> {
@@ -141,5 +168,9 @@ impl<D: Device + ?Sized> Device for Box<D> {
 
     fn write(&mut self, outputs: &AudioBlock<'_>) -> Result<(), DeviceError> {
         (**self).write(outputs)
+    }
+
+    fn latency(&self) -> DeviceLatency {
+        (**self).latency()
     }
 }

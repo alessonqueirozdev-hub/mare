@@ -44,6 +44,8 @@ use mare_protocol::registry::{
     RegistryControl, RegistryHeader, RegistryLayout, RegistrySlot, RegistryView, hub_state,
     reject_reason, slot_state,
 };
+
+pub use mare_protocol::registry::LatencySource;
 use mare_protocol::ring::{RingConsumer, RingProducer, UmpEvent};
 use mare_protocol::segment::{SegmentConfig, SegmentLayout, SegmentView, client_flags, hub_flags};
 use mare_sys::{Doorbell, HubName, ProcessWatch, SharedMemory, Waiter, current_pid};
@@ -102,6 +104,34 @@ pub struct HubInfo {
     pub device_inputs: u32,
     /// Channels the hub's device plays; zero if the hub does not say.
     pub device_outputs: u32,
+    /// The device's latency when this was read (see [`Client::latency`]
+    /// for it now).
+    pub latency: HubLatency,
+}
+
+/// A hub's latency, as the hub publishes it (layout 0.4; unknown before).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct HubLatency {
+    /// Frames from when the first input frame of a cycle reached the
+    /// device's input to the cycle's start; zero if unknown.
+    pub input_frames: u32,
+    /// Frames from a cycle's start until its first output frame leaves the
+    /// device; zero if unknown. A client's output written in a cycle leaves
+    /// this long after the cycle's [`Cycle::frame_time`].
+    pub output_frames: u32,
+    /// Where the two come from.
+    pub source: LatencySource,
+}
+
+impl HubLatency {
+    fn read(control: &RegistryControl) -> Self {
+        let source = LatencySource::from_raw(control.latency_source.load(Ordering::Acquire));
+        Self {
+            input_frames: control.input_latency.load(Ordering::Relaxed),
+            output_frames: control.output_latency.load(Ordering::Relaxed),
+            source,
+        }
+    }
 }
 
 /// Why a client could not connect.
@@ -243,6 +273,7 @@ impl HubInfo {
             hub_pid: header.hub_pid,
             device_inputs: control.device_inputs.load(Ordering::Relaxed),
             device_outputs: control.device_outputs.load(Ordering::Relaxed),
+            latency: HubLatency::read(control),
         }
     }
 }
@@ -442,6 +473,13 @@ impl Client {
     /// How the hub runs.
     pub fn info(&self) -> HubInfo {
         self.info
+    }
+
+    /// The hub's latency now. The hub may change it while it runs (a
+    /// measured figure given in place of the driver's), so a client that
+    /// compensates for it reads it again from time to time, off its cycle.
+    pub fn latency(&self) -> HubLatency {
+        HubLatency::read(self.registry_view.control())
     }
 
     /// The registry slot this client has.

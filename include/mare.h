@@ -42,7 +42,7 @@ extern "C" {
 /* Versions. A reader refuses another major version; minor versions only give
  * meaning to reserved bytes. */
 #define MARE_VERSION_MAJOR 0
-#define MARE_VERSION_MINOR 3
+#define MARE_VERSION_MINOR 4
 
 #define MARE_BLOCK_ALIGN 64
 
@@ -63,6 +63,11 @@ extern "C" {
 #define MARE_HUB_STARTING 0u
 #define MARE_HUB_RUNNING 1u
 #define MARE_HUB_STOPPED 2u
+
+/* Where a hub's latencies come from (layout 0.4). */
+#define MARE_LATENCY_UNKNOWN 0u  /* nobody has said; they are zero */
+#define MARE_LATENCY_REPORTED 1u /* worked out from the driver's figures */
+#define MARE_LATENCY_MEASURED 2u /* measured, and given to the hub */
 
 /* registry slot: state */
 #define MARE_SLOT_FREE 0u
@@ -104,7 +109,10 @@ typedef struct mare_registry_control {
     MARE_ATOMIC uint32_t keeper_bell; /* the housekeeper's doorbell (0.2) */
     MARE_ATOMIC uint32_t device_inputs;  /* device channels recorded (0.3) */
     MARE_ATOMIC uint32_t device_outputs; /* device channels played (0.3) */
-    uint8_t pad1[36];
+    MARE_ATOMIC uint32_t input_latency;  /* frames, input to cycle (0.4) */
+    MARE_ATOMIC uint32_t output_latency; /* frames, cycle to output (0.4) */
+    MARE_ATOMIC uint32_t latency_source; /* MARE_LATENCY_* (0.4) */
+    uint8_t pad1[24];
     MARE_ATOMIC uint32_t hub_bell;  /* the hub's doorbell */
     uint8_t pad2[60];
 } mare_registry_control;
@@ -288,6 +296,9 @@ MARE_CHECK("cycle", offsetof(mare_registry_control, cycle) == 8);
 MARE_CHECK("keeper_bell", offsetof(mare_registry_control, keeper_bell) == 16);
 MARE_CHECK("device_inputs", offsetof(mare_registry_control, device_inputs) == 20);
 MARE_CHECK("device_outputs", offsetof(mare_registry_control, device_outputs) == 24);
+MARE_CHECK("input_latency", offsetof(mare_registry_control, input_latency) == 28);
+MARE_CHECK("output_latency", offsetof(mare_registry_control, output_latency) == 32);
+MARE_CHECK("latency_source", offsetof(mare_registry_control, latency_source) == 36);
 MARE_CHECK("hub_bell", offsetof(mare_registry_control, hub_bell) == 64);
 MARE_CHECK("segment_size", offsetof(mare_registry_slot, segment_size) == 16);
 MARE_CHECK("late_cycles", offsetof(mare_registry_slot, late_cycles) == 32);

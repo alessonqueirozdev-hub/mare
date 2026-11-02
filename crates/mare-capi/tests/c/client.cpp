@@ -43,6 +43,8 @@ int main(int argc, char** argv) {
     mare_hub_info info = client.info();
     std::printf("hub %u %u %u %u %u\n", info.sample_rate, info.period_frames, info.max_frames,
                 info.device_inputs, info.device_outputs);
+    mare_latency latency = client.latency();
+    std::printf("latency %u %u %u\n", latency.input_frames, latency.output_frames, latency.source);
 
     unsigned long cycles = 0, wrong = 0, sent = 0;
     auto process = [&](mare::Cycle& cycle) {

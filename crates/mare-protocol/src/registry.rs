@@ -52,6 +52,50 @@ pub mod hub_state {
     pub const STOPPED: u32 = 2;
 }
 
+/// Values of [`RegistryControl::latency_source`].
+pub mod latency_source {
+    /// Nobody has said (and the latencies are zero).
+    pub const UNKNOWN: u32 = 0;
+    /// The device's driver reported the figures they were worked out from:
+    /// an estimate, which leaves out whatever the driver does not count.
+    pub const REPORTED: u32 = 1;
+    /// Someone measured them (with a loopback cable, say) and gave them to
+    /// the hub.
+    pub const MEASURED: u32 = 2;
+}
+
+/// Where a hub's latencies come from, as [`latency_source`] says.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LatencySource {
+    /// Nobody has said.
+    Unknown,
+    /// Worked out from the figures the device's driver reported.
+    Reported,
+    /// Measured.
+    Measured,
+}
+
+impl LatencySource {
+    /// The source a [`latency_source`] value names; an unknown value is
+    /// [`LatencySource::Unknown`].
+    pub fn from_raw(raw: u32) -> Self {
+        match raw {
+            latency_source::REPORTED => Self::Reported,
+            latency_source::MEASURED => Self::Measured,
+            _ => Self::Unknown,
+        }
+    }
+
+    /// Its [`latency_source`] value.
+    pub fn raw(self) -> u32 {
+        match self {
+            Self::Unknown => latency_source::UNKNOWN,
+            Self::Reported => latency_source::REPORTED,
+            Self::Measured => latency_source::MEASURED,
+        }
+    }
+}
+
 /// Values of [`RegistrySlot::state`].
 pub mod slot_state {
     /// Nobody uses the slot.
@@ -159,7 +203,18 @@ pub struct RegistryControl {
     /// Channels the hub's device plays, stored before `RUNNING` (layout
     /// 0.3; zero, unknown, before).
     pub device_outputs: AtomicU32,
-    _pad1: [u8; 36],
+    /// Frames from when the first input frame of a cycle reached the
+    /// device's input to the cycle's start (layout 0.4; zero, unknown,
+    /// before). The hub may change it while it runs.
+    pub input_latency: AtomicU32,
+    /// Frames from a cycle's start until its first output frame leaves the
+    /// device (layout 0.4; zero, unknown, before). The hub may change it
+    /// while it runs.
+    pub output_latency: AtomicU32,
+    /// A [`latency_source`] value: where the two latencies come from
+    /// (layout 0.4).
+    pub latency_source: AtomicU32,
+    _pad1: [u8; 24],
     /// The hub's doorbell: a client adds one when it finishes a cycle.
     pub hub_bell: AtomicU32,
     _pad2: [u8; 60],

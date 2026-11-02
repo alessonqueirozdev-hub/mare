@@ -5,8 +5,8 @@ use std::io;
 use std::sync::Arc;
 
 use mare_hub::{
-    Aggregate, Clock, Device, DeviceError, FollowerThread, HubConfig, HubError, LinkStats,
-    RateMismatch, RunningHub, Stats, SystemClock, aggregate,
+    Aggregate, Clock, Device, DeviceError, DeviceLatency, FollowerThread, HubConfig, HubError,
+    LatencySource, LinkStats, RateMismatch, RunningHub, Stats, SystemClock, aggregate,
 };
 
 /// A device of any kind.
@@ -108,6 +108,16 @@ impl Session {
     /// The hub's counters.
     pub fn stats(&self) -> Stats {
         self.hub.stats()
+    }
+
+    /// The latency published to programs, and where it comes from.
+    pub fn latency(&self) -> (DeviceLatency, LatencySource) {
+        self.hub.latency()
+    }
+
+    /// Publishes another latency to programs: a measured one, say.
+    pub fn set_latency(&self, latency: DeviceLatency, source: LatencySource) {
+        self.hub.set_latency(latency, source);
     }
 
     /// Whether the hub's cycle thread runs at real-time priority.

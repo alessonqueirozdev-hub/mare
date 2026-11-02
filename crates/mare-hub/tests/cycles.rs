@@ -7,13 +7,14 @@
 
 mod common;
 
+use std::sync::Arc;
 use std::sync::atomic::Ordering;
 use std::time::Duration;
 
 use common::{DEVICE, connect, fake_hub, unique_hub};
 use mare_client::{Client, ClientConfig, ConnectError};
-use mare_hub::fake::silence;
-use mare_hub::{Clock, HubError};
+use mare_hub::fake::{FakeDevice, Pacing, silence};
+use mare_hub::{Clock, DeviceLatency, HubConfig, HubError, LatencySource, SystemClock};
 use mare_protocol::registry::{
     RegistryHeader, RegistryLayout, RegistryView, reject_reason, slot_state,
 };
@@ -491,4 +492,56 @@ fn a_hub_can_be_probed_without_taking_a_slot() {
     let client = connect(&mut keeper, &name, &ClientConfig::new("after", 1, 1)).unwrap();
     assert_eq!(client.info(), info);
     drop((client, engine));
+}
+
+#[test]
+fn a_hub_publishes_its_device_latency_and_takes_a_measured_one() {
+    // A device that says nothing: the latency is unknown.
+    let name = unique_hub();
+    let (engine, _keeper, _clock) = fake_hub(&name, 1, silence);
+    let latency = mare_client::probe(&name).unwrap().latency;
+    assert_eq!(
+        (latency.input_frames, latency.output_frames, latency.source),
+        (0, 0, LatencySource::Unknown)
+    );
+    drop(engine);
+
+    // A device that reports one.
+    let name = unique_hub();
+    let reported = DeviceLatency {
+        input_frames: 200,
+        output_frames: 150,
+    };
+    let device = FakeDevice::new(DEVICE, Pacing::RealTime).with_latency(reported);
+    let hub = mare_hub::start(
+        &HubConfig::new(name.clone()),
+        device,
+        Arc::new(SystemClock::new()),
+    )
+    .unwrap();
+    assert_eq!(hub.latency(), (reported, LatencySource::Reported));
+    let latency = mare_client::probe(&name).unwrap().latency;
+    assert_eq!(
+        (latency.input_frames, latency.output_frames, latency.source),
+        (200, 150, LatencySource::Reported)
+    );
+    let client = Client::connect(&name, &ClientConfig::new("latency", 2, 2)).unwrap();
+    assert_eq!(client.info().latency, latency);
+
+    // A measured one replaces it, and the client sees it at once.
+    let measured = DeviceLatency {
+        input_frames: 230,
+        output_frames: 181,
+    };
+    hub.set_latency(measured, LatencySource::Measured);
+    let now = client.latency();
+    assert_eq!(
+        (now.input_frames, now.output_frames, now.source),
+        (230, 181, LatencySource::Measured)
+    );
+    // Zero is unknown, whatever the source given.
+    hub.set_latency(DeviceLatency::default(), LatencySource::Measured);
+    assert_eq!(client.latency().source, LatencySource::Unknown);
+    drop(client);
+    let _ = hub.stop();
 }

@@ -79,6 +79,10 @@ fn a_null_hub_runs_a_client_until_its_time_is_up() {
             "4",
             "--seconds",
             "6",
+            "--input-latency",
+            "290",
+            "--output-latency",
+            "310",
         ])
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -91,7 +95,10 @@ fn a_null_hub_runs_a_client_until_its_time_is_up() {
     let shown = text(&probe.stdout);
     assert!(
         shown.contains("48000 Hz, period 128 frames (2.67 ms)")
-            && shown.contains("device inputs 1, outputs 4"),
+            && shown.contains("device inputs 1, outputs 4")
+            && shown.contains(
+                "latency: input 290 frames (6.04 ms), output 310 frames (6.46 ms); measured"
+            ),
         "{shown}"
     );
 
@@ -102,6 +109,7 @@ fn a_null_hub_runs_a_client_until_its_time_is_up() {
 
     let mut client = Client::connect(&hub, &ClientConfig::new("test", 1, 4)).unwrap();
     assert_eq!(client.info().device_outputs, 4);
+    assert_eq!(client.latency().output_frames, 310);
     let mut cycles = 0;
     while cycles < 100 {
         if client
@@ -134,4 +142,47 @@ fn a_null_hub_runs_a_client_until_its_time_is_up() {
     }
     // The hub's name is free again.
     assert!(mare_client::probe(&hub).is_err());
+}
+
+#[test]
+fn a_measured_latency_needs_both_figures_when_the_hub_has_inputs() {
+    let hub = unique('m');
+    let out = mare(&[
+        "run",
+        "--null",
+        "--name",
+        hub.as_str(),
+        "--output-latency",
+        "300",
+        "--seconds",
+        "1",
+    ]);
+    assert_eq!(out.status.code(), Some(1), "{out:?}");
+    assert!(text(&out.stderr).contains("--input-latency"), "{out:?}");
+    // The hub it started for a moment is gone again.
+    assert!(mare_client::probe(&hub).is_err());
+
+    // Without inputs, the output's is enough; a null device says nothing
+    // of its own, so before it the latency is unknown.
+    let quiet = mare(&["run", "--null", "--name", hub.as_str(), "--seconds", "0.3"]);
+    assert!(
+        text(&quiet.stdout).contains("latency: input unknown, output unknown; nobody has said")
+    );
+    let out = mare(&[
+        "run",
+        "--null",
+        "--inputs",
+        "0",
+        "--name",
+        hub.as_str(),
+        "--output-latency",
+        "300",
+        "--seconds",
+        "0.3",
+    ]);
+    assert!(out.status.success(), "{out:?}");
+    assert!(
+        text(&out.stdout).contains("latency: input unknown, output 300 frames (6.25 ms); measured"),
+        "{out:?}"
+    );
 }

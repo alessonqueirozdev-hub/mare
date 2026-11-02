@@ -22,7 +22,7 @@ use std::thread::JoinHandle;
 use mare_drift::{LinkConsumer, LinkProducer, LinkSettings, LinkStats, link};
 
 use crate::clock::Clock;
-use crate::device::{AudioBlock, Device, DeviceConfig, DeviceError};
+use crate::device::{AudioBlock, Device, DeviceConfig, DeviceError, DeviceLatency};
 
 /// A follower runs at another sample rate than the master. Drift is
 /// corrected; a change of rate is not.
@@ -210,6 +210,13 @@ impl<M> Aggregate<M> {
 impl<M: Device> Device for Aggregate<M> {
     fn config(&self) -> DeviceConfig {
         self.config
+    }
+
+    /// The master's: the followers' channels have the latency their links
+    /// add on top of their own devices' (see
+    /// [`Aggregate::capture_latency`] and [`Follower::playback_latency`]).
+    fn latency(&self) -> DeviceLatency {
+        self.master.latency()
     }
 
     fn wait_period(&mut self) -> Result<usize, DeviceError> {

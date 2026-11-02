@@ -158,7 +158,7 @@ fn plays_silence_with(endpoint: &Endpoint, options: &OpenOptions) {
     let mode = options.mode;
     let device = WasapiDevice::open(&endpoint.id, options).unwrap();
     let config = device.config();
-    let latency = device.latency();
+    let latency = device.latency_parts();
     eprintln!(
         "{}: {:?}, {:?}, {} Hz, {} channels, {:?}",
         device.name(),
@@ -171,6 +171,10 @@ fn plays_silence_with(endpoint: &Endpoint, options: &OpenOptions) {
     assert!(config.period_frames > 0 && config.period_frames <= config.max_frames);
     let period =
         Duration::from_secs_f64(f64::from(config.period_frames) / f64::from(config.sample_rate));
+    // The estimate the hub publishes: an output latency, and no input one.
+    let estimate = Device::latency(&device);
+    assert!(estimate.output_frames > 0, "{estimate:?}");
+    assert_eq!(estimate.input_frames, 0);
 
     let hub = unique_hub();
     let (mut engine, mut keeper) = mare_hub::create(
@@ -179,6 +183,9 @@ fn plays_silence_with(endpoint: &Endpoint, options: &OpenOptions) {
         Arc::new(SystemClock::new()) as Arc<dyn Clock>,
     )
     .unwrap();
+    let published = mare_client::probe(&hub).unwrap().latency;
+    assert_eq!(published.output_frames, estimate.output_frames);
+    assert_eq!(published.source, mare_client::LatencySource::Reported);
     // A client that writes silence, on its own thread.
     let client = std::thread::spawn(move || {
         let mut client = Client::connect(&hub, &ClientConfig::new("silence", 0, 2)).unwrap();
@@ -313,7 +320,7 @@ fn duplex(output: &Endpoint, input: &Endpoint, mode: Mode) {
         config.sample_rate,
         config.input_channels,
         config.output_channels,
-        device.latency()
+        device.latency_parts()
     );
     assert!(config.input_channels > 0);
     let period = f64::from(config.period_frames) / f64::from(config.sample_rate);

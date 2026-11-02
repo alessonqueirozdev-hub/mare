@@ -34,6 +34,11 @@ Options of run:
   --rate HZ         The sample rate, in exclusive mode (default the mixer's).
   --clients N       The most programs at once, 1 to 1024 (default 64).
   --seconds S       Stop after S seconds.
+  --output-latency FRAMES, --input-latency FRAMES
+                    The device's latency as measured (with a loopback
+                    cable, say), published to programs in place of the
+                    estimate worked out from the driver's figures. Give both
+                    when the hub has inputs.
   --null            Run on no device: silence, timed by the system clock. For
                     trying programs without a sound card, on any system.
   --inputs N        The null device's input channels (default 2).
@@ -92,6 +97,8 @@ pub struct RunOptions {
     pub max_clients: u32,
     /// Stop after this many seconds.
     pub seconds: Option<f64>,
+    /// The measured latency, in frames, input and output.
+    pub measured_latency: Option<(Option<u32>, u32)>,
 }
 
 /// The null device's rate when none is given.
@@ -149,6 +156,8 @@ fn run_options(options: &Options) -> Result<RunOptions, UsageError> {
         "--rate",
         "--clients",
         "--seconds",
+        "--input-latency",
+        "--output-latency",
         "--null",
         "--inputs",
         "--outputs",
@@ -206,6 +215,18 @@ fn run_options(options: &Options) -> Result<RunOptions, UsageError> {
         rate,
         max_clients: options.number("--clients", 1, 1024)?.unwrap_or(64),
         seconds,
+        measured_latency: match (
+            options.number("--input-latency", 1, 1_000_000)?,
+            options.number("--output-latency", 1, 1_000_000)?,
+        ) {
+            (None, None) => None,
+            (input, Some(output)) => Some((input, output)),
+            (Some(_), None) => {
+                return Err(usage(
+                    "--input-latency needs --output-latency: a measurement gives both",
+                ));
+            }
+        },
     })
 }
 
@@ -338,6 +359,15 @@ mod tests {
         assert_eq!(options.rate, Some(96_000));
         assert_eq!(options.max_clients, 8);
         assert_eq!(options.seconds, Some(2.5));
+        assert_eq!(options.measured_latency, None);
+        assert_eq!(
+            run("run --output-latency 310 --input-latency 290").measured_latency,
+            Some((Some(290), 310))
+        );
+        assert_eq!(
+            run("run --output-latency 310").measured_latency,
+            Some((None, 310))
+        );
     }
 
     #[test]
@@ -387,6 +417,8 @@ mod tests {
             "run --clients 2000",
             "run --rate 96000",
             "run --seconds -1",
+            "run --input-latency 200",
+            "run --output-latency 0",
             "run --exclusive=yes",
             "run --device a --device b",
             "run --null --device UMC",

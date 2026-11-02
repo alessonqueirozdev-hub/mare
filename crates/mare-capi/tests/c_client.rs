@@ -19,10 +19,10 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 
-use mare::{MareClientConfig, MareEvent, MareHubInfo};
 use mare_hub::fake::{FakeDevice, Pacing};
-use mare_hub::{DeviceConfig, HubConfig, SystemClock};
+use mare_hub::{DeviceConfig, DeviceLatency, HubConfig, SystemClock};
 use mare_sys::{HubName, current_pid};
+use mareclient::{MareClientConfig, MareEvent, MareHubInfo};
 
 fn unique_hub() -> HubName {
     static NEXT: AtomicUsize = AtomicUsize::new(0);
@@ -74,7 +74,7 @@ fn compile(source: &Path, cpp: bool, program: &Path, work: &Path) -> Option<std:
             .arg(format!("/Fe:{}", program.display()))
             .arg("/link")
             .arg(format!("/LIBPATH:{}", lib.display()))
-            .arg("mare.dll.lib");
+            .arg("mareclient.dll.lib");
         Some(command.output().unwrap())
     }
     #[cfg(not(windows))]
@@ -94,7 +94,7 @@ fn compile(source: &Path, cpp: bool, program: &Path, work: &Path) -> Option<std:
             .arg(program)
             .arg("-L")
             .arg(&lib)
-            .arg("-lmare")
+            .arg("-lmareclient")
             .arg(format!("-Wl,-rpath,{}", lib.display()))
             .output();
         match output {
@@ -145,7 +145,11 @@ fn run_client(source: &str, cpp: bool) {
         },
         Pacing::RealTime,
     )
-    .with_input(levels);
+    .with_input(levels)
+    .with_latency(DeviceLatency {
+        input_frames: 96,
+        output_frames: 160,
+    });
     let hub = mare_hub::start(
         &HubConfig::new(name.clone()),
         device,
@@ -220,6 +224,7 @@ fn run_client(source: &str, cpp: bool) {
     assert_eq!(lines.next().unwrap(), "missing 1 null");
     assert_eq!(lines.next().unwrap(), "bad name 12");
     assert_eq!(lines.next().unwrap(), "hub 48000 64 128 2 2");
+    assert_eq!(lines.next().unwrap(), "latency 96 160 1");
     assert!(lines.next().unwrap().starts_with("stopped 9 cycles "));
     assert!(stats.events_received >= 16, "{stats:?}");
     // The last cycle's outputs reached the device, unless the client was
@@ -243,7 +248,7 @@ fn a_client_in_cpp_runs_against_a_hub() {
 
 #[test]
 fn the_rust_side_answers_without_a_hub() {
-    use mare::*;
+    use mareclient::*;
     assert_eq!(mare_abi_version(), MARE_ABI_VERSION);
     // SAFETY: static nul-terminated strings.
     let text = unsafe { std::ffi::CStr::from_ptr(mare_status_text(MARE_FULL)) };

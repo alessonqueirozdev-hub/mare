@@ -180,6 +180,13 @@ public:
         return info;
     }
 
+    // The hub's latency now; it may change while the hub runs.
+    mare_latency latency() const noexcept {
+        mare_latency latency{};
+        mare_client_latency(client_, &latency);
+        return latency;
+    }
+
     std::uint64_t last_cycle() const noexcept { return mare_client_last_cycle(client_); }
     std::uint64_t late_cycles() const noexcept { return mare_client_late_cycles(client_); }
 

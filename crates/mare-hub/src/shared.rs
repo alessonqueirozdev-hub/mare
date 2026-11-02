@@ -17,10 +17,12 @@
 use std::cell::UnsafeCell;
 use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 
-use mare_protocol::registry::{RegistryHeader, RegistryView, hub_state};
+use mare_protocol::registry::{LatencySource, RegistryHeader, RegistryView, hub_state};
 use mare_protocol::ring::{RingConsumer, RingProducer};
 use mare_protocol::segment::{SegmentView, hub_flags};
 use mare_sys::{Doorbell, HubName, SharedMemory};
+
+use crate::device::DeviceLatency;
 
 pub(crate) mod phase {
     pub(crate) const EMPTY: u32 = 0;
@@ -165,6 +167,36 @@ pub(crate) struct Shared {
 }
 
 impl Shared {
+    /// Publishes the device's latency, from `source`, to clients.
+    pub(crate) fn publish_latency(&self, latency: DeviceLatency, source: LatencySource) {
+        let control = self.view.control();
+        let source = if latency.is_unknown() {
+            LatencySource::Unknown
+        } else {
+            source
+        };
+        control
+            .input_latency
+            .store(latency.input_frames, Ordering::Relaxed);
+        control
+            .output_latency
+            .store(latency.output_frames, Ordering::Relaxed);
+        control
+            .latency_source
+            .store(source.raw(), Ordering::Release);
+    }
+
+    /// The latency published, and where it comes from.
+    pub(crate) fn latency(&self) -> (DeviceLatency, LatencySource) {
+        let control = self.view.control();
+        let source = LatencySource::from_raw(control.latency_source.load(Ordering::Acquire));
+        let latency = DeviceLatency {
+            input_frames: control.input_latency.load(Ordering::Relaxed),
+            output_frames: control.output_latency.load(Ordering::Relaxed),
+        };
+        (latency, source)
+    }
+
     /// Tells clients the hub is stopping: the registry says so, and every
     /// client the cycle thread still runs is asked to stop and woken.
     ///

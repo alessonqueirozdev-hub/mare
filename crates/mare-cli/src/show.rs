@@ -2,7 +2,7 @@
 
 use std::time::Duration;
 
-use mare_client::HubInfo;
+use mare_client::{HubInfo, HubLatency, LatencySource};
 use mare_hub::{LinkStats, Stats};
 use mare_sys::HubName;
 use mare_wasapi::Endpoint;
@@ -66,7 +66,7 @@ pub fn hub_info(hub: &HubName, info: &HubInfo) -> String {
     };
     format!(
         "hub {}: {} Hz, period {} frames ({:.2} ms), at most {} frames, \
-         device inputs {}, outputs {}, process {}",
+         device inputs {}, outputs {}, process {}\n{}",
         hub.as_str(),
         info.sample_rate,
         info.period_frames,
@@ -74,7 +74,29 @@ pub fn hub_info(hub: &HubName, info: &HubInfo) -> String {
         info.max_frames,
         channels(info.device_inputs),
         channels(info.device_outputs),
-        info.hub_pid
+        info.hub_pid,
+        latency(&info.latency, info.sample_rate)
+    )
+}
+
+/// A hub's latency, for people to read.
+pub fn latency(latency: &HubLatency, rate: u32) -> String {
+    let part = |frames: u32| {
+        if frames == 0 {
+            "unknown".to_owned()
+        } else {
+            format!("{frames} frames ({:.2} ms)", ms(f64::from(frames), rate))
+        }
+    };
+    let source = match latency.source {
+        LatencySource::Unknown => "nobody has said",
+        LatencySource::Reported => "an estimate from the driver's figures",
+        LatencySource::Measured => "measured",
+    };
+    format!(
+        "latency: input {}, output {}; {source}",
+        part(latency.input_frames),
+        part(latency.output_frames)
     )
 }
 
@@ -161,6 +183,26 @@ mod tests {
         let ambiguous = find_endpoint(&list, "UMC").unwrap_err();
         assert!(ambiguous.contains("2 devices"), "{ambiguous}");
         assert!(find_endpoint(&list, "Focusrite").is_err());
+    }
+
+    #[test]
+    fn latencies_say_where_they_come_from() {
+        let mut shown = HubLatency {
+            input_frames: 0,
+            output_frames: 144,
+            source: LatencySource::Reported,
+        };
+        assert_eq!(
+            latency(&shown, 48_000),
+            "latency: input unknown, output 144 frames (3.00 ms); \
+             an estimate from the driver's figures"
+        );
+        shown.input_frames = 288;
+        shown.source = LatencySource::Measured;
+        assert_eq!(
+            latency(&shown, 48_000),
+            "latency: input 288 frames (6.00 ms), output 144 frames (3.00 ms); measured"
+        );
     }
 
     #[test]

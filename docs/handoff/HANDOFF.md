@@ -34,9 +34,8 @@ driver models), in Rust with a C header. Public:
 
 ## How to test
 
-```
-bash scripts/cloud-setup.sh --test
-```
+On GitHub: the CI runs only on `ci/**` branches. Push the SHA to test to a
+`ci/<topic>` branch and read it with `gh run list` / `gh run view`.
 
 ## Environment variables
 

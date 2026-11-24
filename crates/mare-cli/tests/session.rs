@@ -61,7 +61,14 @@ fn followers_add_their_channels_and_report_their_links() {
 
     let report = session.stop();
     assert!(report.error.is_none());
-    assert!(report.stats.client_cycles >= 300);
+    // The test's client counts every cycle it finished; the hub counts the
+    // ones finished in time as client cycles and the rest as late, which a
+    // loaded machine makes happen.
+    assert!(
+        report.stats.client_cycles + report.stats.late >= 300,
+        "{:?}",
+        report.stats
+    );
     assert_eq!(report.followers.len(), 2);
     for (index, follower) in report.followers.iter().enumerate() {
         assert!(follower.error.is_none(), "follower {index}");

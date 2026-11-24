@@ -34,11 +34,47 @@ fn levels(channel: u32, _frame: u64) -> f32 {
     if channel == 0 { 0.25 } else { -0.5 }
 }
 
-/// Where cargo put the library: beside this test, in `deps` (it copies it
-/// up a directory only sometimes).
+/// The file the program links against: the import library on Windows, the
+/// shared library elsewhere.
+const LINKED: &str = if cfg!(windows) {
+    "mareclient.dll.lib"
+} else if cfg!(target_os = "macos") {
+    "libmareclient.dylib"
+} else {
+    "libmareclient.so"
+};
+
+/// The folder of the library cargo built for this test.
+///
+/// Cargo used to put it beside the test executable, in
+/// `target/<profile>/deps`. Since Rust 1.100 every unit has a folder of its
+/// own, `target/<profile>/build/<package>/<hash>/out`, and the library is
+/// also copied up to `target/<profile>`. Older copies can sit in either
+/// place, so the folder of the newest one found is this build's.
 fn library_dir() -> PathBuf {
     let exe = std::env::current_exe().unwrap();
-    exe.parent().unwrap().to_owned()
+    let mut candidates: Vec<PathBuf> = exe
+        .ancestors()
+        .skip(1)
+        .map(|folder| folder.join(LINKED))
+        .collect();
+    let units = exe
+        .ancestors()
+        .find(|folder| folder.file_name().is_some_and(|name| name == "build"))
+        .and_then(|build| std::fs::read_dir(build.join(env!("CARGO_PKG_NAME"))).ok());
+    candidates.extend(
+        units
+            .into_iter()
+            .flatten()
+            .flatten()
+            .map(|unit| unit.path().join("out").join(LINKED)),
+    );
+    candidates
+        .into_iter()
+        .filter_map(|path| Some((path.metadata().ok()?.modified().ok()?, path)))
+        .max_by_key(|(modified, _)| *modified)
+        .and_then(|(_, path)| path.parent().map(Path::to_owned))
+        .unwrap_or_else(|| panic!("cargo has not built {LINKED} for {}", exe.display()))
 }
 
 /// Compiles `source` into `program`, or returns `None` if there is no
